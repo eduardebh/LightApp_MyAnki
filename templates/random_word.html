@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% block content %}
+  <h2>Palabra aleatoria</h2>
+  {% if error %}
+    <div style="color:red;">{{ error }}</div>
+  {% else %}
+    <div>
+      <strong>Palabra:</strong> <span id="word">{{ word }}</span><br>
+      <strong>IPA:</strong> <span id="ipa_word">{{ ipa_word }}</span><br><br>
+        <button id="show-association-btn" title="Mostrar asociación (I)" aria-label="Mostrar asociación" aria-keyshortcuts="I" style="font-size:1.5em; background:none; border:none; cursor:pointer; width:2em; height:2em; line-height:1; padding:0;">&#x1F4A1;</button>
+      <div id="association-container" style="display:none; margin-top:10px;">
+        <span id="association"></span>
+      </div>
+    </div>
+    <script>
+      function revealAssociation() {
+        const word = document.getElementById('word').textContent;
+        fetch('/api/get_association', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ word })
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.association) {
+            const esc = (s) => (s || '').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+            const raw = (data.association || '').toString().replace(/\n/g, ' ');
+            const parts = raw.split(',').map(p => p.trim()).filter(Boolean);
+            document.getElementById('association').innerHTML = parts.length ? parts.map(p => esc(p)).join('<br>') : '';
+            document.getElementById('association-container').style.display = 'block';
+          } else {
+            document.getElementById('association').innerHTML = '';
+            document.getElementById('association-container').style.display = 'block';
+          }
+        })
+        .catch(() => {
+          document.getElementById('association').innerHTML = '';
+          document.getElementById('association-container').style.display = 'block';
+        });
+      }
+
+      function setupAssociationButton() {
+        // Siempre mostrar el botón, limpiar asociación al cargar nueva palabra
+        var btn = document.getElementById('show-association-btn');
+        var assoc = document.getElementById('association');
+        var assocContainer = document.getElementById('association-container');
+        if (btn) {
+          assocContainer.style.display = 'none';
+          assoc.textContent = '';
+          btn.style.display = 'inline-block';
+          btn.onclick = revealAssociation;
+        }
+        // Tecla 'i' para mostrar asociación
+        document.onkeydown = function(e) {
+          if ((e.key === 'i' || e.key === 'I') && !e.repeat) {
+            revealAssociation();
+          }
+        };
+      }
+      setupAssociationButton();
+    </script>
+  {% endif %}
+  <br>
+  <a href="/">Volver al inicio</a>
+{% endblock %}

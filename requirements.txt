@@ -1,0 +1,14 @@
+Flask
+python-dotenv
+psycopg2-binary
+sqlalchemy
+pandas
+openai
+gunicorn
+Flask-Session
+requests
+google-cloud-texttospeech
+Flask-Cors==4.0.0
+
+# Install helper package from the bundled submodule so the app uses the remote repo implementation.
+-e ./mytools

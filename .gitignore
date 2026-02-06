@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Environment / secrets
+.env
+.env.*
+google-credentials.json
+google-credentials*.json
+
+# Local/editor
+.vscode/*.log
+
+# Backups / dumps
+backups/
+mytools/backups/
+*.dump
+*.sql.dump
+
+# Scratch
+Untitled-*.txt
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div id="main-container">
+  <h2 style="color:#facc15;font-size:clamp(20px,5vw,28px);text-align:center;margin-bottom:clamp(16px,4vh,24px);">Login</h2>
+  {% if error %}
+    <div class="round-message error" style="background:rgba(245,158,66,0.1);color:#f59e42;border:none;margin-bottom:clamp(12px,3vh,20px);">{{ error }}</div>
+  {% endif %}
+  <form id="login-form" method="post" action="/login" style="max-width:400px;width:100%;display:flex;flex-direction:column;align-items:center;gap:clamp(8px,2vh,16px);">
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      var form = document.getElementById('login-form');
+      if (form) {
+        form.addEventListener('keydown', function(e) {
+          // Enter para enviar
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            var btn = form.querySelector('.mobile-btn');
+            if (btn) {
+              btn.focus();
+              btn.click();
+            } else form.submit();
+          }
+          // Space para enviar (si no es textarea ni input tipo texto)
+          if (e.key === ' ' || e.key === 'Spacebar') {
+            var active = document.activeElement;
+            if (!active || (active.tagName !== 'TEXTAREA' && !(active.tagName === 'INPUT' && (active.type === 'text' || active.type === 'password')))) {
+              e.preventDefault();
+              var btn = form.querySelector('.mobile-btn');
+              if (btn) {
+                btn.focus();
+                btn.click();
+              } else form.submit();
+            }
+          }
+        });
+      }
+    });
+    </script>
+    <label style="color:#cbd5e1;font-size:clamp(14px,4vw,16px);align-self:flex-start;margin-bottom:4px;">Username or Email</label>
+    <input type="text" name="username" class="input-text" required />
+    <label style="color:#cbd5e1;font-size:clamp(14px,4vw,16px);align-self:flex-start;margin-bottom:4px;">Password</label>
+    <input type="password" name="password" class="input-text" required />
+    <div style="margin-top:clamp(12px,3vh,20px);display:flex;align-items:center;gap:clamp(12px,3vw,20px);flex-wrap:wrap;justify-content:center;">
+      <button type="submit" class="mobile-btn">Login</button>
+      <a href="/register" style="color:#60a5fa;text-decoration:none;font-size:clamp(14px,4vw,16px);">Register</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

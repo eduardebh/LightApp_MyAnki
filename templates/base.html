@@ -1,0 +1,1731 @@
+
+    <!-- Botón state-info-btn y botón + juntos en la esquina superior izquierda -->
+    <div style="position:fixed;top:18px;left:18px;z-index:1200;display:flex;flex-direction:row;align-items:center;gap:12px;">
+        <button id="state-info-btn" title="Ver lista" aria-label="Ver lista" style="width:44px;height:44px;background:#23272f;border-radius:50%;border:none;box-shadow:0 2px 8px #0004;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s;">
+            <span style="display:block;width:18px;height:18px;border-radius:50%;background:#38bdf8;"></span>
+        </button>
+        <button id="add-word-btn" title="Agregar palabra" aria-label="Agregar palabra" style="width:44px;height:44px;background:#23272f;border-radius:50%;border:none;box-shadow:0 2px 8px #0004;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s;font-size:2em;color:#fde047;">
+            <span style="font-size:2em;line-height:1;">+</span>
+        </button>
+    </div>
+
+    <!-- Popup to add word -->
+    <div id="add-word-popup" style="display:none;position:fixed;top:74px;left:18px;z-index:1300;background:#23272f;padding:24px 20px 20px 20px;border-radius:16px;box-shadow:0 4px 32px #000a;min-width:260px;max-width:90vw;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <span style="font-size:1.2em;color:#fde047;font-weight:bold;">Add word:</span>
+            <button onclick="closeAddWordPopup()" style="background:none;border:none;font-size:1.5em;color:#fde047;cursor:pointer;">&times;</button>
+        </div>
+        <input id="add-word-input" type="text" placeholder="New word or phrase" style="width:90%;padding:8px;font-size:1em;border-radius:6px;border:1px solid #374151;background:#18181b;color:#f3f4f6;margin-bottom:12px;">
+        <button onclick="submitAddWord()" style="padding:8px 16px;font-size:1em;border-radius:6px;background:#059669;color:#fff;border:none;cursor:pointer;">Add</button>
+        <div id="add-word-feedback" style="margin-top:10px;color:#fde047;"></div>
+        <div id="add-word-selector" style="margin-top:24px; display:flex; justify-content:center; align-items:center; gap:12px;">
+            <span style="color:#fff;font-size:1.1em;">Add word from:</span>
+            <div id="custom-dropdown" style="position:relative; min-width:180px;">
+                <button id="dropdown-btn" style="width:340px;max-width:95vw;background:#23272f;color:#fde047;font-weight:bold;padding:8px 16px;border-radius:8px;border:none;cursor:pointer;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">Select...</button>
+                <div id="dropdown-list" style="display:none;position:absolute;top:110%;left:0;width:340px;max-width:95vw;background:#23272f;border-radius:8px;box-shadow:0 2px 8px #0008;max-height:168px;overflow-y:auto;z-index:10;"></div>
+            </div>
+        </div>
+    </div>
+
+    
+
+    <script>
+        // Toggle verbose TTS logs in the browser console.
+        // You can still disable it in DevTools: `window.TTS_DEBUG = false`.
+        if (typeof window !== 'undefined' && typeof window.TTS_DEBUG === 'undefined') {
+            window.TTS_DEBUG = true;
+        }
+        function _ttsDebug() { try { if (window.TTS_DEBUG) console.debug.apply(console, arguments); } catch (e) {} }
+        function _ttsLog() { try { if (window.TTS_DEBUG) console.log.apply(console, arguments); } catch (e) {} }
+        function _ttsWarn() { try { if (window.TTS_DEBUG) console.warn.apply(console, arguments); } catch (e) {} }
+
+        function _normalizeLocaleTag(language) {
+            try {
+                if (!language) return 'en-US';
+                const s = String(language).trim();
+                if (!s) return 'en-US';
+                const low = s.toLowerCase().replace('_', '-');
+                if (low === 'fr') return 'fr-FR';
+                if (low.startsWith('fr-')) return 'fr-' + low.split('-')[1].toUpperCase();
+                if (low === 'de') return 'de-DE';
+                if (low.startsWith('de-')) return 'de-' + low.split('-')[1].toUpperCase();
+                if (low === 'es') return 'es-ES';
+                if (low.startsWith('es-')) return 'es-' + low.split('-')[1].toUpperCase();
+                // Default: keep as-is (some voices use non-standard tags)
+                return s;
+            } catch (e) {
+                return language || 'en-US';
+            }
+        }
+
+        function _normalizeTextForTTS(text, language) {
+            let t = (text == null) ? '' : String(text);
+            const lang = (language || '').toString().toLowerCase();
+
+            // Ensure composed characters for diacritics when possible (e.g., e + ◌̀ -> è)
+            // This helps some TTS engines pronounce accents correctly.
+            try { t = t.normalize('NFC'); } catch (e) {}
+
+            // If the text is just a single letter with diacritics, some voices will read the character name
+            // (e.g., "a acute") instead of producing the vowel sound. In that case, speak the base letter.
+            // Keep this conservative: only apply when the entire text is one visible character.
+            try {
+                const single = t.trim();
+                if (single.length === 1) {
+                    const ch = single;
+                    const map = {
+                        'á': 'a', 'à': 'a', 'â': 'a', 'ä': 'a', 'ã': 'a', 'å': 'a', 'Á': 'A', 'À': 'A', 'Â': 'A', 'Ä': 'A', 'Ã': 'A', 'Å': 'A',
+                        'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e', 'É': 'E', 'È': 'E', 'Ê': 'E', 'Ë': 'E',
+                        'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i', 'Í': 'I', 'Ì': 'I', 'Î': 'I', 'Ï': 'I',
+                        'ó': 'o', 'ò': 'o', 'ô': 'o', 'ö': 'o', 'õ': 'o', 'Ó': 'O', 'Ò': 'O', 'Ô': 'O', 'Ö': 'O', 'Õ': 'O',
+                        'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u', 'Ú': 'U', 'Ù': 'U', 'Û': 'U', 'Ü': 'U',
+                        'ý': 'y', 'ÿ': 'y', 'Ý': 'Y',
+                        'ç': 's', 'Ç': 'S'
+                    };
+                    if (map[ch]) {
+                        t = map[ch];
+                    }
+                }
+            } catch (e) {}
+
+            // Some engines (or wrong locale selection) read ASCII apostrophe as punctuation (“apostrophe”).
+            // Using the typographic apostrophe often yields the intended French elision pronunciation.
+            if (lang.startsWith('fr')) {
+                // Replace only when between letters (avoid changing quotes in other contexts).
+                t = t.replace(/([A-Za-zÀ-ÿ])'([A-Za-zÀ-ÿ])/g, '$1’$2');
+
+                // Handle literal dead-key artifacts some users might type:
+                // "e^" instead of "ê", "e`" instead of "è".
+                // Do this only when the symbol follows a vowel.
+                t = t
+                    // Circumflex
+                    .replace(/a\^/g, 'â').replace(/A\^/g, 'Â')
+                    .replace(/e\^/g, 'ê').replace(/E\^/g, 'Ê')
+                    .replace(/i\^/g, 'î').replace(/I\^/g, 'Î')
+                    .replace(/o\^/g, 'ô').replace(/O\^/g, 'Ô')
+                    .replace(/u\^/g, 'û').replace(/U\^/g, 'Û')
+                    // Grave
+                    .replace(/a`/g, 'à').replace(/A`/g, 'À')
+                    .replace(/e`/g, 'è').replace(/E`/g, 'È')
+                    .replace(/u`/g, 'ù').replace(/U`/g, 'Ù');
+
+                return t;
+            }
+            return t;
+        }
+
+        function _normalizeTextForLocalSpeech(text, language) {
+            // Extra cleaning for SpeechSynthesis: some local engines will literally say
+            // punctuation names ("apostrophe", "point") instead of pronouncing naturally.
+            let t = (text == null) ? '' : String(text);
+            const lang = (language || '').toString().toLowerCase();
+            try { t = t.normalize('NFC'); } catch (e) {}
+
+            // French elisions: expand common clitics so the voice doesn't spell single letters.
+            // Example: "J'ai" -> "je ai" (local engines often misread "J" or apostrophes).
+            if (lang.startsWith('fr')) {
+                const lookahead = '(?=[A-Za-zÀ-ÖØ-öø-ÿ])';
+
+                const replWord = (match, g1, lowerWord, upperWord) => {
+                    const isUpper = (g1 && g1[0] === g1[0].toUpperCase());
+                    return (isUpper ? upperWord : lowerWord) + ' ';
+                };
+
+                // Order matters: handle "qu'" before "q'" etc.
+                t = t
+                    .replace(new RegExp('\\b(qu)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'que', 'Que'))
+                    .replace(new RegExp('\\b(j)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'je', 'Je'))
+                    .replace(new RegExp('\\b(d)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'de', 'De'))
+                    .replace(new RegExp('\\b(c)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'ce', 'Ce'))
+                    .replace(new RegExp('\\b(l)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'le', 'Le'))
+                    .replace(new RegExp('\\b(m)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'me', 'Me'))
+                    .replace(new RegExp('\\b(n)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'ne', 'Ne'))
+                    .replace(new RegExp('\\b(s)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'se', 'Se'))
+                    .replace(new RegExp('\\b(t)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'te', 'Te'));
+            }
+
+            // Remove/neutralize remaining punctuation for local speech
+            t = t
+                // Dots in abbreviations or after letters
+                .replace(/(?<=[A-Za-zÀ-ÖØ-öø-ÿ])\.(?=[A-Za-zÀ-ÖØ-öø-ÿ])/g, '')
+                .replace(/(?<=[A-Za-zÀ-ÖØ-öø-ÿ])\.(?!\d)/g, '')
+                // Apostrophes left (turn into nothing)
+                .replace(/[’']/g, '')
+                // Common punctuation to spaces
+                .replace(/[\u00B7·,:;!?()\[\]{}"“”«»]/g, ' ')
+                // Hyphens/emdash to spaces
+                .replace(/[\-–—]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+            return t;
+        }
+
+        // --- Google Cloud TTS con fallback a SpeechSynthesis ---
+        async function playTTS(text, language, onEnd=null, options=null) {
+                        _ttsDebug('[TTS] playTTS start', {text: (''+text).slice(0,120), language});
+                        // Cancelar cualquier audio local pendiente antes de reproducir
+                        if (window.speechSynthesis) window.speechSynthesis.cancel();
+                        // Cancelar cualquier audio Google TTS pendiente
+                        if (window._currentGoogleAudio && typeof window._currentGoogleAudio.pause === 'function') {
+                            window._currentGoogleAudio.pause();
+                            window._currentGoogleAudio.currentTime = 0;
+                        }
+            const normalizedLanguage = _normalizeLocaleTag(language);
+            const normalizedText = _normalizeTextForTTS(text, normalizedLanguage);
+
+            const ipa = options && options.ipa ? options.ipa : null;
+            const forceGoogleFirst = !!(options && options.forceGoogleFirst);
+            const forceGoogleForFrenchApostrophe = (
+                (normalizedLanguage || '').toString().toLowerCase().startsWith('fr') &&
+                /['’]/.test(normalizedText)
+            );
+
+            async function _tryGoogleTTSOnce() {
+                try {
+                    const payload = ipa ? { text: normalizedText, language: normalizedLanguage, ipa } : { text: normalizedText, language: normalizedLanguage };
+                    const resp = await fetch('/api/tts', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await resp.json();
+                    if (data.success && data.audioContent) {
+                        const audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
+                        if (window._currentGoogleAudio && typeof window._currentGoogleAudio.pause === 'function') {
+                            window._currentGoogleAudio.pause();
+                            window._currentGoogleAudio.currentTime = 0;
+                        }
+                        window._currentGoogleAudio = audio;
+                        audio.onplay = () => _ttsLog('[TTS] Audio Google Cloud TTS reproduciéndose');
+                        audio.onerror = (e) => console.error('[TTS] Error al reproducir audio:', e);
+                        audio.onended = () => { window._currentGoogleAudio = null; try { if (onEnd) onEnd(); } catch(e){console.error('onEnd callback error', e);} };
+                        audio.play();
+                        _ttsLog('[TTS] Usando Google Cloud TTS');
+                        return true;
+                    }
+                    _ttsWarn('[TTS] Google Cloud TTS fallback:', data && data.error);
+                } catch (e) {
+                    _ttsWarn('[TTS] Google Cloud TTS error:', e);
+                }
+                return false;
+            }
+
+            function _speakLocalOnce(voiceObjOrNull) {
+                const localText = _normalizeTextForLocalSpeech(normalizedText, normalizedLanguage);
+                const utter = new SpeechSynthesisUtterance(localText);
+                utter.lang = (voiceObjOrNull && voiceObjOrNull.lang) ? voiceObjOrNull.lang : normalizedLanguage;
+                if (voiceObjOrNull) utter.voice = voiceObjOrNull;
+                utter.onend = function() {
+                    try { if (onEnd) onEnd(); } catch(e){console.error('onEnd callback error', e);} 
+                };
+                window.speechSynthesis.speak(utter);
+                return false;
+            }
+
+            // If we have IPA (e.g., with liaison) and we're in French, prefer Google first to honor pronunciation.
+            // Also prefer Google first for French elisions with apostrophes (e.g., “j’ai”), which some local voices misread.
+            if (forceGoogleFirst || forceGoogleForFrenchApostrophe) {
+                const ok = await _tryGoogleTTSOnce();
+                if (ok) return true;
+                const fallbackVoices = window.speechSynthesis ? getNaturalVoices(normalizedLanguage) : [];
+                const v = (fallbackVoices && fallbackVoices.length) ? fallbackVoices[Math.floor(Math.random() * fallbackVoices.length)] : null;
+                return _speakLocalOnce(v);
+            }
+            // 1. Usar todas las voces locales filtradas (natural/high quality) antes de pasar a Google TTS
+            if (!window._ttsVoiceIndex) window._ttsVoiceIndex = {};
+            if (!window._ttsVoiceOrder) window._ttsVoiceOrder = {};
+            const key = normalizedText + '|' + normalizedLanguage;
+            // 1. Construir el ciclo de 4 voces: primero todas las locales (al azar, sin repetir), luego Google TTS para completar
+            let voices = window.speechSynthesis ? getNaturalVoices(normalizedLanguage) : [];
+            let cycle = [];
+            if (voices && voices.length) {
+                // Mezclar voces locales
+                const shuffled = voices.slice();
+                for (let i = shuffled.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+                }
+                cycle = shuffled.slice(0, 4); // máximo 4 voces locales
+            }
+            // Si hay menos de 4 voces locales, completar con "google-tts" placeholders
+            while (cycle.length < 4) {
+                cycle.push('google-tts');
+            }
+            // Guardar el ciclo si es la primera vez o si se reinicia
+            if (!window._ttsVoiceOrder[key] || window._ttsVoiceOrder[key].length !== 4) {
+                window._ttsVoiceOrder[key] = cycle;
+                window._ttsVoiceIndex[key] = 0;
+            }
+            const idx = window._ttsVoiceIndex[key] || 0;
+            const current = window._ttsVoiceOrder[key][idx];
+            // 2. Ejecutar la voz correspondiente
+            if (current !== 'google-tts' && current) {
+                // Voz local
+                const localText = _normalizeTextForLocalSpeech(normalizedText, normalizedLanguage);
+                const utter = new SpeechSynthesisUtterance(localText);
+                utter.lang = (current && current.lang) ? current.lang : normalizedLanguage;
+                utter.voice = current;
+                utter.onend = function() {
+                    window._ttsVoiceIndex[key] = (idx + 1) % 4;
+                    try { if (onEnd) onEnd(); } catch(e){console.error('onEnd callback error', e);} 
+                };
+                window.speechSynthesis.speak(utter);
+                _ttsLog('[TTS] Usando SpeechSynthesis:', current.name);
+                return false;
+            } else {
+                // Google TTS
+                let googleTTSOk = false;
+                googleTTSOk = await _tryGoogleTTSOnce();
+                if (googleTTSOk) {
+                    window._ttsVoiceIndex[key] = (idx + 1) % 4;
+                    return true;
+                }
+                // Si Google TTS falla, solo usar las voces locales disponibles (aunque sean menos de 4)
+                if (voices && voices.length) {
+                    const fallbackVoice = voices[0];
+                    const localText = _normalizeTextForLocalSpeech(normalizedText, normalizedLanguage);
+                    const utter = new SpeechSynthesisUtterance(localText);
+                    utter.lang = (fallbackVoice && fallbackVoice.lang) ? fallbackVoice.lang : normalizedLanguage;
+                    utter.voice = fallbackVoice;
+                    utter.onend = function() {
+                        window._ttsVoiceIndex[key] = (idx + 1) % 4;
+                        try { if (onEnd) onEnd(); } catch(e){console.error('onEnd callback error', e);} 
+                    };
+                    window.speechSynthesis.speak(utter);
+                    _ttsLog('[TTS] Usando SpeechSynthesis (fallback):', fallbackVoice.name);
+                    return false;
+                }
+            }
+        }
+    // Show/hide popup
+    document.getElementById('add-word-btn').onclick = function() {
+        document.getElementById('add-word-popup').style.display = 'block';
+        document.getElementById('add-word-input').focus();
+        document.getElementById('add-word-feedback').textContent = '';
+    };
+    function closeAddWordPopup() {
+        document.getElementById('add-word-popup').style.display = 'none';
+    }
+
+    // --- IPA popup + SpeechSynthesis aleatorio ---
+    function closeIpaSoundsPopup() {
+        const p = document.getElementById('ipa-sounds-popup');
+        if (p) p.style.display = 'none';
+    }
+    function toggleIpaSoundsPopup() {
+        const p = document.getElementById('ipa-sounds-popup');
+        if (!p) return;
+        p.style.display = (p.style.display === 'none' || !p.style.display) ? 'block' : 'none';
+    }
+    function _cancelAnyAudio() {
+        try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
+        try {
+            if (window._currentGoogleAudio && typeof window._currentGoogleAudio.pause === 'function') {
+                window._currentGoogleAudio.pause();
+                window._currentGoogleAudio.currentTime = 0;
+            }
+        } catch (e) {}
+    }
+    async function playIPA(symbol) {
+        _cancelAnyAudio();
+        const hasLocalTTS = !!window.speechSynthesis;
+
+        // Esperar a que carguen las voces si el navegador aún no las expone
+        const ensureVoices = () => new Promise(resolve => {
+            if (!hasLocalTTS) return resolve([]);
+            const v = window.speechSynthesis.getVoices() || [];
+            if (v.length) return resolve(v);
+            let done = false;
+            const finish = () => { if (done) return; done = true; resolve(window.speechSynthesis.getVoices() || []); };
+            try { window.speechSynthesis.addEventListener('voiceschanged', finish, { once: true }); } catch (e) {}
+            setTimeout(finish, 350);
+        });
+
+        await ensureVoices();
+        const meta = document.getElementById('active-list-meta');
+        let preferredLang = (meta && meta.dataset && meta.dataset.language) ? meta.dataset.language : null;
+        if (preferredLang && preferredLang.length === 2) preferredLang = mapLangToLocale(preferredLang) || preferredLang;
+        if (!preferredLang) preferredLang = navigator.language || navigator.userLanguage || 'en-US';
+
+        const langLower = (preferredLang || '').toString().toLowerCase();
+        const baseLang = langLower.includes('-') ? langLower.split('-')[0] : langLower;
+
+        // Many TTS engines don't pronounce raw IPA symbols reliably.
+        // Use short example words that contain the target sound.
+        const IPA_EXAMPLES = {
+            // French examples (nasal vowels are French-specific)
+            fr: {
+                // Prefer examples that are (almost) a single phoneme when spoken
+                // Note: exact realization varies by voice/accent, but these are typically very close.
+                'ə': 'e',      // French letter name “e” ≈ /ə/
+                'e': 'et',     // “et” ≈ /e/
+                'ɛ': 'est',    // “est” ≈ /ɛ/
+                'ɔ̃': 'on',    // “on” ≈ /ɔ̃/
+                'ɑ̃': 'an',    // “an” ≈ /ɑ̃/
+                'ɛ̃': 'hein',  // interjection “hein” ≈ /ɛ̃/
+                'œ': 'peur'    // “peur” ≈ /pœʁ/ (close enough for a short demo)
+            },
+            // German examples (ö-umlaut)
+            de: {
+                // Use a short German word so local SpeechSynthesis has a fighting chance,
+                // but still send the IPA phoneme to Google (SSML) for a pure vowel.
+                'øː': 'schön',
+                'œ': 'Hölle'
+            }
+        };
+        const exampleWord = (IPA_EXAMPLES[baseLang] && IPA_EXAMPLES[baseLang][symbol]) ? IPA_EXAMPLES[baseLang][symbol] : symbol;
+
+        const ipaPhoneme = (
+            (baseLang === 'de' && (symbol === 'øː' || symbol === 'œ')) ||
+            (baseLang === 'fr' && symbol === 'œ')
+        ) ? symbol : null;
+
+        async function tryGoogleFor(text, language, ipa=null) {
+            try {
+                const resp = await fetch('/api/tts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(ipa ? { text, language, ipa } : { text, language })
+                });
+                const data = await resp.json();
+                if (data && data.success && data.audioContent) {
+                    const audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
+                    if (window._currentGoogleAudio && typeof window._currentGoogleAudio.pause === 'function') {
+                        window._currentGoogleAudio.pause();
+                        window._currentGoogleAudio.currentTime = 0;
+                    }
+                    window._currentGoogleAudio = audio;
+                    audio.onended = () => { window._currentGoogleAudio = null; };
+                    await audio.play();
+                    return true;
+                }
+            } catch (e) {
+                // ignore
+            }
+            return false;
+        }
+
+        function speakLocal(text, language) {
+            if (!hasLocalTTS) return;
+            const voices = (typeof getNaturalVoices === 'function') ? getNaturalVoices(language) : (window.speechSynthesis.getVoices() || []);
+            const voice = (voices && voices.length) ? voices[Math.floor(Math.random() * voices.length)] : null;
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.lang = language;
+            if (voice) utter.voice = voice;
+            window.speechSynthesis.speak(utter);
+        }
+
+        // Mix: randomly use Google TTS; fallback to SpeechSynthesis.
+        // If we have an IPA phoneme (e.g., German ö short/long), force Google first so it can output the pure sound.
+        const preferGoogle = ipaPhoneme ? true : (!hasLocalTTS ? true : (Math.random() < 0.5));
+        if (preferGoogle) {
+            const ok = await tryGoogleFor(exampleWord, preferredLang, ipaPhoneme);
+            if (!ok) speakLocal(exampleWord, preferredLang);
+        } else {
+            speakLocal(exampleWord, preferredLang);
+        }
+    }
+
+    // Wire UI (after DOM is ready; these elements may be rendered later via Jinja blocks)
+    function initIpaPopup() {
+        const btn = document.getElementById('ipa-sounds-btn');
+        const closeBtn = document.getElementById('ipa-sounds-close');
+        if (!btn) return;
+
+        // Avoid double-wiring if this runs more than once
+        if (btn.dataset && btn.dataset.wired === '1') return;
+        try { if (btn.dataset) btn.dataset.wired = '1'; } catch (e) {}
+
+        btn.addEventListener('click', function(e) { e.preventDefault(); toggleIpaSoundsPopup(); });
+        if (closeBtn) closeBtn.addEventListener('click', function(e) { e.preventDefault(); closeIpaSoundsPopup(); });
+        document.querySelectorAll('.ipa-sound').forEach(function(b) {
+            b.addEventListener('click', function(e) {
+                e.preventDefault();
+                const ipa = b.getAttribute('data-ipa') || b.textContent || '';
+                playIPA(ipa);
+            });
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', initIpaPopup);
+
+    // Close with Escape
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            closeAddWordPopup();
+            closeIpaSoundsPopup();
+        }
+    });
+    // Send word to backend
+    async function submitAddWord() {
+        const word = document.getElementById('add-word-input').value.trim();
+        const feedback = document.getElementById('add-word-feedback');
+        if (!word) {
+            feedback.textContent = 'Please enter a word.';
+            return;
+        }
+        feedback.textContent = 'Adding...';
+        try {
+            const resp = await fetch('/api/add_word', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ word })
+            });
+            console.log('add_word response:', resp);
+            let data = null;
+            try {
+                data = await resp.json();
+                console.log('add_word data:', data);
+            } catch (e) {
+                console.error('Error parsing JSON:', e);
+            }
+            if (data && data.success) {
+                feedback.textContent = 'Word added!';
+                // Actualizar tabla de palabras si está abierta
+                const modal = document.getElementById('words-table-modal');
+                if (modal && modal.style.display === 'flex') {
+                    const words = await fetchAllWords();
+                    renderWordsTable(words);
+                }
+                // Actualizar dropdown de palabras inactivas si está abierto
+                const dropdownList = document.getElementById('dropdown-list');
+                if (dropdownList && dropdownList.style.display === 'block') {
+                    const words = await fetchInactiveWords();
+                    renderDropdown(words);
+                }
+                setTimeout(() => { closeAddWordPopup(); }, 1000);
+            } else if (data) {
+                feedback.textContent = data.error || 'Error adding word.';
+            } else {
+                feedback.textContent = 'Network error (no data).';
+            }
+        } catch (err) {
+            console.error('Network or fetch error:', err);
+            feedback.textContent = 'Network error.';
+        }
+    }
+    </script>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyAnki Light</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    {% if active_list and all_lists|length > 1 %}
+        <div id="active-list-container" style="position:fixed;top:20px;left:170px;z-index:1000;max-width:60vw;display:flex;align-items:center;gap:8px;">
+            <form method="post" style="display:flex;align-items:center;gap:8px;">
+                <label for="active_list_id" class="active-list-item" style="cursor:pointer;display:inline-block;font-weight:bold;color:#22c55e;font-size:1.1em;">
+                    Active list:
+                </label>
+                <select name="active_list_id" id="active_list_id" class="active-list-item" style="background:#18181b;color:#2a4;font-weight:bold;font-size:clamp(14px,3.5vw,16px);border:none;outline:none;cursor:pointer;min-width:120px;" onchange="this.form.submit()">
+                    {% for l in all_lists %}
+                        <option value="{{ l.id }}" {% if l.id == active_list.id %}selected{% endif %}>{{ l.name }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>
+    {% elif active_list %}
+        <div id="active-list-container" style="position:fixed;top:20px;left:90px;z-index:1000;max-width:70vw;">
+            <span class="active-list-item">Lista activa: <b>{{ active_list.name }}</b></span>
+        </div>
+    {% endif %}
+
+    <!-- Meta para JS: language de la lista activa -->
+    <div id="active-list-meta" data-language="{% if active_list and active_list.language %}{{ active_list.language }}{% endif %}" style="display:none;"></div>
+    {% if session.get('user_id') or user_id or username %}
+
+    <!-- Botón pequeño en esquina inferior izquierda para popup IPA -->
+    <button id="ipa-sounds-btn" title="Sonidos IPA" aria-label="Sonidos IPA" style="position:fixed;bottom:18px;left:18px;z-index:1200;width:34px;height:34px;background:#23272f;border-radius:10px;border:none;box-shadow:0 2px 8px #0004;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s;color:#fde047;font-weight:bold;">
+        <span style="font-size:16px;line-height:1;">IPA</span>
+    </button>
+
+    <!-- Bottom-right button to delete the current word -->
+    <button id="delete-word-btn" title="Delete word" aria-label="Delete word" style="display:none;position:fixed;bottom:18px;right:18px;z-index:1200;width:30px;height:30px;background:#f87171;border-radius:50%;border:none;box-shadow:0 2px 8px #0004;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s;color:#fff;font-weight:bold;">
+        <span style="font-size:20px;line-height:1;">-</span>
+    </button>
+
+    <!-- Popup IPA -->
+    <div id="ipa-sounds-popup" style="display:none;position:fixed;bottom:62px;left:18px;z-index:1300;background:#23272f;padding:16px 16px 14px 16px;border-radius:16px;box-shadow:0 4px 32px #000a;min-width:220px;max-width:90vw;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:10px;">
+            <span style="font-size:1.05em;color:#fde047;font-weight:bold;">IPA sounds</span>
+            <button id="ipa-sounds-close" title="Cerrar (Esc)" aria-label="Cerrar" style="background:none;border:none;font-size:1.5em;color:#fde047;cursor:pointer;line-height:1;">&times;</button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;">
+            <button class="ipa-sound" data-ipa="ə" style="padding:8px 12px;border-radius:10px;background:#18181b;color:#f3f4f6;border:1px solid #374151;cursor:pointer;font-size:1.15em;">ə</button>
+            <button class="ipa-sound" data-ipa="e" style="padding:8px 12px;border-radius:10px;background:#18181b;color:#f3f4f6;border:1px solid #374151;cursor:pointer;font-size:1.15em;">e</button>
+            <button class="ipa-sound" data-ipa="ɛ" style="padding:8px 12px;border-radius:10px;background:#18181b;color:#f3f4f6;border:1px solid #374151;cursor:pointer;font-size:1.15em;">ɛ</button>
+            <button class="ipa-sound" data-ipa="ɔ̃" style="padding:8px 12px;border-radius:10px;background:#18181b;color:#f3f4f6;border:1px solid #374151;cursor:pointer;font-size:1.15em;">ɔ̃</button>
+            <button class="ipa-sound" data-ipa="ɑ̃" style="padding:8px 12px;border-radius:10px;background:#18181b;color:#f3f4f6;border:1px solid #374151;cursor:pointer;font-size:1.15em;">ɑ̃</button>
+            <button class="ipa-sound" data-ipa="ɛ̃" style="padding:8px 12px;border-radius:10px;background:#18181b;color:#f3f4f6;border:1px solid #374151;cursor:pointer;font-size:1.15em;">ɛ̃</button>
+            <button class="ipa-sound" data-ipa="øː" style="padding:8px 12px;border-radius:10px;background:#18181b;color:#f3f4f6;border:1px solid #374151;cursor:pointer;font-size:1.15em;">øː</button>
+            <button class="ipa-sound" data-ipa="œ" style="padding:8px 12px;border-radius:10px;background:#18181b;color:#f3f4f6;border:1px solid #374151;cursor:pointer;font-size:1.15em;">œ</button>
+        </div>
+        <div style="margin-top:10px;color:#cbd5e1;font-size:0.9em;">Usa una voz natural aleatoria del navegador.</div>
+    </div>
+    <div id="start-container" style="width:100vw;text-align:center;margin-top:120px;">
+        <button id="state-info-btn" title="Ver lista" aria-label="Ver lista" style="position:fixed;top:18px;left:18px;width:44px;height:44px;background:#23272f;border-radius:50%;border:none;box-shadow:0 2px 8px #0004;cursor:pointer;z-index:1100;display:flex;align-items:center;justify-content:center;transition:background 0.2s;">
+            <span style="display:block;width:18px;height:18px;border-radius:50%;background:#38bdf8;"></span>
+        </button>
+        <div id="words-table-modal" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#18181bcc;z-index:2000;align-items:center;justify-content:center;">
+                    <div style="background:#23272f;padding:32px 24px 24px 24px;border-radius:18px;max-width:95vw;max-height:80vh;overflow:auto;box-shadow:0 4px 32px #000a;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+                            <span style="font-size:1.3em;color:#38bdf8;font-weight:bold;">Words in the active list</span>
+                            <button id="close-table-btn" style="background:none;border:none;font-size:1.5em;color:#fde047;cursor:pointer;">&times;</button>
+                        </div>
+                        <table id="words-table" style="width:100%;border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#18181b;color:#fde047;">
+                                    <th style="padding:8px 12px;">
+                                        <button type="button" data-sort-key="id" style="background:none;border:none;color:inherit;font:inherit;font-weight:bold;cursor:pointer;padding:0;">ID</button>
+                                    </th>
+                                    <th style="padding:8px 12px;">
+                                        <button type="button" data-sort-key="word" style="background:none;border:none;color:inherit;font:inherit;font-weight:bold;cursor:pointer;padding:0;">Word</button>
+                                    </th>
+                                    <th style="padding:8px 12px;">
+                                        <button type="button" data-sort-key="association" style="background:none;border:none;color:inherit;font:inherit;font-weight:bold;cursor:pointer;padding:0;">Association</button>
+                                    </th>
+                                    <th style="padding:8px 12px;">
+                                        <button type="button" data-sort-key="IPA_word" style="background:none;border:none;color:inherit;font:inherit;font-weight:bold;cursor:pointer;padding:0;">IPA</button>
+                                    </th>
+                                    <th style="padding:8px 12px;">
+                                        <button type="button" data-sort-key="counter_word" style="background:none;border:none;color:inherit;font:inherit;font-weight:bold;cursor:pointer;padding:0;">Counter</button>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+        <button id="start-btn" class="mobile-btn" title="Start (Espacio)" aria-label="Start" aria-keyshortcuts="Space" style="font-size:1.3em;padding:18px 40px;margin:0 auto;text-decoration:none;">Start</button>
+        <div id="ipa-word-container" style="margin-top:40px;"></div>
+    </div>
+    <script>
+            // --- Mostrar tabla de palabras de la lista activa ---
+            async function fetchAllWords() {
+                const resp = await fetch('/api/all_words');
+                if (!resp.ok) return [];
+                return await resp.json();
+            }
+
+            function _wordsTableDefaultSortState() {
+                return { key: 'id', dir: 'desc' };
+            }
+
+            function _getWordsTableSortState() {
+                if (!window._wordsTableSort || !window._wordsTableSort.key || !window._wordsTableSort.dir) {
+                    window._wordsTableSort = _wordsTableDefaultSortState();
+                }
+                return window._wordsTableSort;
+            }
+
+            function _setWordsTableSortState(next) {
+                window._wordsTableSort = {
+                    key: next && next.key ? next.key : 'id',
+                    dir: next && next.dir === 'asc' ? 'asc' : 'desc',
+                };
+            }
+
+            function _normalizeSortValue(v, key) {
+                if (key === 'id' || key === 'counter_word') {
+                    const n = Number(v);
+                    return Number.isFinite(n) ? n : 0;
+                }
+                if (v === null || v === undefined) return '';
+                return String(v);
+            }
+
+            function _sortWords(words) {
+                const state = _getWordsTableSortState();
+                const key = state.key;
+                const dir = state.dir;
+                const sign = dir === 'asc' ? 1 : -1;
+
+                return words.slice().sort((a, b) => {
+                    const av = _normalizeSortValue(a ? a[key] : undefined, key);
+                    const bv = _normalizeSortValue(b ? b[key] : undefined, key);
+
+                    if (typeof av === 'number' && typeof bv === 'number') {
+                        if (av === bv) return 0;
+                        return (av < bv ? -1 : 1) * sign;
+                    }
+
+                    const as = String(av);
+                    const bs = String(bv);
+                    const cmp = as.localeCompare(bs, undefined, { sensitivity: 'base' });
+                    if (cmp === 0) return 0;
+                    return cmp * sign;
+                });
+            }
+
+            function _updateWordsTableHeaderIndicators() {
+                const state = _getWordsTableSortState();
+                const headers = document.querySelectorAll('#words-table thead button[data-sort-key]');
+                headers.forEach(btn => {
+                    const key = btn.getAttribute('data-sort-key');
+                    const baseLabel = (btn.getAttribute('data-sort-label') || btn.textContent || '').replace(/\s*[▲▼]\s*$/, '').trim();
+                    btn.setAttribute('data-sort-label', baseLabel);
+                    if (key === state.key) {
+                        btn.textContent = baseLabel + ' ' + (state.dir === 'asc' ? '▲' : '▼');
+                    } else {
+                        btn.textContent = baseLabel;
+                    }
+                });
+            }
+
+            function renderWordsTable(words) {
+                const tbody = document.querySelector('#words-table tbody');
+                tbody.innerHTML = '';
+                window._wordsTableData = Array.isArray(words) ? words.slice() : [];
+                const sorted = _sortWords(window._wordsTableData);
+                _updateWordsTableHeaderIndicators();
+                sorted.forEach(obj => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td style="padding:7px 12px;color:#fde047;max-width:60px;">${obj.id}</td>`+
+                        `<td style="padding:7px 12px;color:#fff;max-width:180px;overflow:hidden;text-overflow:ellipsis;">${obj.word}</td>`+
+                        `<td style="padding:7px 12px;color:#fde047;max-width:220px;overflow:hidden;text-overflow:ellipsis;">${obj.association || ''}</td>`+
+                        `<td style="padding:7px 12px;color:#38bdf8;max-width:120px;overflow:hidden;text-overflow:ellipsis;">${obj.IPA_word || ''}</td>`+
+                        `<td style="padding:7px 12px;color:#a3e635;max-width:60px;">${obj.counter_word || 0}</td>`;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+                const stateInfoBtn = document.getElementById('state-info-btn');
+                const modal = document.getElementById('words-table-modal');
+                const closeBtn = document.getElementById('close-table-btn');
+                const headerButtons = document.querySelectorAll('#words-table thead button[data-sort-key]');
+
+                headerButtons.forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const key = btn.getAttribute('data-sort-key');
+                        const state = _getWordsTableSortState();
+                        if (key === state.key) {
+                            _setWordsTableSortState({ key, dir: state.dir === 'asc' ? 'desc' : 'asc' });
+                        } else {
+                            _setWordsTableSortState({ key, dir: 'asc' });
+                        }
+                        renderWordsTable(window._wordsTableData || []);
+                    });
+                });
+
+                // Default sort (keeps previous behavior: ID desc)
+                _setWordsTableSortState(_wordsTableDefaultSortState());
+                _updateWordsTableHeaderIndicators();
+                if (stateInfoBtn && modal && closeBtn) {
+                    stateInfoBtn.addEventListener('click', async function() {
+                        modal.style.display = 'flex';
+                        const words = await fetchAllWords();
+                        renderWordsTable(words);
+                    });
+                    closeBtn.addEventListener('click', function() {
+                        modal.style.display = 'none';
+                    });
+                    // Cerrar modal al hacer click fuera del cuadro
+                    modal.addEventListener('click', function(e) {
+                        if (e.target === modal) modal.style.display = 'none';
+                    });
+                }
+            });
+        // --- Dropdown personalizado para palabras con added=FALSE ---
+        async function fetchInactiveWords() {
+            // Llama a un endpoint que devuelva las palabras de la lista activa con added=FALSE
+            const resp = await fetch('/api/inactive_words');
+            if (!resp.ok) return [];
+            return await resp.json();
+        }
+
+        function renderDropdown(words) {
+            const list = document.getElementById('dropdown-list');
+            list.innerHTML = '';
+            if (!words.length) {
+                list.innerHTML = '<div style="padding:12px;color:#888;">No words</div>';
+                return;
+            }
+            words.forEach(obj => {
+                const item = document.createElement('div');
+                item.innerHTML = `<span style=\"font-weight:bold;min-width:90px;max-width:40vw;overflow:hidden;text-overflow:ellipsis;display:inline-block;\">${obj.word}</span>` +
+                    (obj.association ? `<span style=\"color:#fde047; margin-left:10px; font-size:0.98em;max-width:200px;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:middle;\">${obj.association}</span>` : '');
+                item.style.cssText = 'padding:10px 16px;cursor:pointer;color:#fff;display:flex;align-items:center;gap:8px;max-width:100%;overflow:hidden;';
+                // keyboard accessibility
+                item.tabIndex = 0;
+                item.setAttribute('role', 'button');
+                item.setAttribute('aria-label', `Agregar palabra: ${obj.word}`);
+                item.title = 'Enter/Espacio: agregar';
+                item.onmouseover = () => item.style.background = '#444';
+                item.onmouseout = () => item.style.background = '';
+                item.onkeydown = (e) => {
+                    if (e.key === 'Enter' || e.code === 'Space' || e.key === ' ') {
+                        e.preventDefault();
+                        try { item.click(); } catch (_) {}
+                    }
+                };
+                item.onclick = async () => {
+                    // Marcar como added=TRUE en la base de datos
+                    await fetch('/api/mark_word_added', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({word: obj.word})
+                    });
+                    // Mostrar mensaje de confirmación
+                    let feedback = document.getElementById('add-word-feedback');
+                    if (feedback) {
+                        feedback.textContent = 'Word added!';
+                        setTimeout(() => { feedback.textContent = ''; }, 1800);
+                    }
+                    // Limpiar el texto del botón
+                    document.getElementById('dropdown-btn').textContent = 'Select...';
+                    list.style.display = 'none';
+                    // Volver a cargar el menú para que desaparezca la palabra
+                    const newWords = await fetchInactiveWords();
+                    renderDropdown(newWords);
+                };
+                list.appendChild(item);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+                    // Ocultar el selector al dar Start y mostrarlo al dar Stop
+                    const addWordSelector = document.getElementById('add-word-selector');
+                    const startBtn = document.getElementById('start-btn');
+                    if (startBtn && addWordSelector) {
+                        startBtn.addEventListener('click', function() {
+                            addWordSelector.style.display = 'none';
+                        });
+                    }
+                    // Mostrar el selector al dar Stop
+                    document.addEventListener('click', function(e) {
+                        if (e.target && e.target.id === 'stop-btn') {
+                            const addWordSelector = document.getElementById('add-word-selector');
+                            if (addWordSelector) addWordSelector.style.display = '';
+                        }
+                    });
+            const dropdownBtn = document.getElementById('dropdown-btn');
+            const dropdownList = document.getElementById('dropdown-list');
+            let dropdownLoaded = false;
+            // Captura de clicks en flechas/stop para cancelar cualquier auto-advance pendiente
+            document.addEventListener('click', function(e) {
+                try {
+                    const el = e.target && e.target.closest ? e.target.closest('#arrow-left,#arrow-right,#stop-btn') : null;
+                    if (el) {
+                        window._autoAdvanceToken = (window._autoAdvanceToken || 0) + 1;
+                        try { console.debug('[AutoAdvance] cancelled by user click', {id: el.id || el.tagName, newToken: window._autoAdvanceToken}); } catch(e){}
+                    }
+                } catch(e) { /* ignore */ }
+            }, true);
+            if (dropdownBtn) {
+                dropdownBtn.addEventListener('click', async function(e) {
+                    e.stopPropagation();
+                    if (dropdownList.style.display === 'block') {
+                        dropdownList.style.display = 'none';
+                        return;
+                    }
+                    if (!dropdownLoaded) {
+                        const words = await fetchInactiveWords();
+                        renderDropdown(words);
+                        dropdownLoaded = true;
+                    }
+                    dropdownList.style.display = 'block';
+                });
+                // Cerrar el menú si se hace click fuera
+                document.addEventListener('click', function(e) {
+                    if (!dropdownBtn.contains(e.target) && !dropdownList.contains(e.target)) {
+                        dropdownList.style.display = 'none';
+                    }
+                });
+            }
+        });
+    // --- Filtro avanzado de voces naturales (idéntico a la app principal) ---
+    function mapLangToLocale(lang) {
+        if (!lang) return null;
+        const l = (lang || '').toString().toLowerCase();
+        if (l === 'fr') return 'fr-FR';
+        if (l === 'de') return 'de-DE';
+        if (l === 'en') return 'en-US';
+        if (l === 'es') return 'es-ES';
+        if (l.length > 2 && l.includes('-')) return lang;
+        return null;
+    }
+    function getNaturalVoices(localeOrLang) {
+        let voices = window.speechSynthesis.getVoices() || [];
+        let lang = localeOrLang;
+        if (lang && lang.length === 2) lang = mapLangToLocale(lang) || lang;
+        if (!lang) lang = navigator.language || navigator.userLanguage || 'en-US';
+        const langLower = (lang || '').toString().toLowerCase();
+        const baseLang = langLower.includes('-') ? langLower.split('-')[0] : langLower;
+        const nonMultilingual = voices.filter(v => !(v.name || '').toLowerCase().includes('multilingual'));
+        if (nonMultilingual.length) voices = nonMultilingual;
+        if (!voices.length) return [];
+
+        // Helper: check if voice is 'natural' (in name or localService)
+        function isNaturalVoice(voice) {
+            const name = (voice.name || '').toLowerCase();
+            return name.includes('natural') || (voice.localService && name.includes('google'));
+        }
+
+        // Helper: stricter high quality filter for all languages
+        function isHighQualityVoice(voice) {
+            const name = (voice.name || '').toLowerCase();
+            // Exclude known poor quality
+            const poorQualityPatterns = [/microsoft.*zira/i, /microsoft.*david/i, /espeak/i, /robot/i, /synthesis/i, /sam/i];
+            if (poorQualityPatterns.some(pattern => pattern.test(name))) return false;
+            // Must have 'natural' in name if available
+            if (isNaturalVoice(voice)) return true;
+            // Otherwise, allow only if Google, Premium, or other preferred
+            const preferredPatterns = [/google/i, /premium/i, /julie/i, /hortense/i, /paul/i, /claire/i, /marie/i, /pierre/i, /amelie/i, /natural/i];
+            return preferredPatterns.some(pattern => pattern.test(name));
+        }
+
+        // Prefer voices matching the requested language (by prefix)
+        let filtered = voices;
+        if (baseLang) {
+            const byPrefix = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith(baseLang));
+            if (byPrefix.length) filtered = byPrefix;
+        }
+        // For French/German, prefer canonical locale if available
+        if (baseLang === 'fr') {
+            const frfr = filtered.filter(v => v.lang && v.lang.toLowerCase() === 'fr-fr');
+            if (frfr.length) filtered = frfr;
+        } else if (baseLang === 'de') {
+            const dede = filtered.filter(v => v.lang && v.lang.toLowerCase() === 'de-de');
+            if (dede.length) filtered = dede;
+        }
+        if (!filtered.length) return [];
+
+        // 1. Filter for 'natural' voices in allowedLangs
+        const naturalVoices = filtered.filter(isNaturalVoice);
+        if (naturalVoices.length) return naturalVoices;
+
+        // 2. Filter for high quality voices in allowedLangs
+        const highQualityVoices = filtered.filter(isHighQualityVoice);
+        if (highQualityVoices.length) return highQualityVoices;
+
+        // 3. Fallback: any voice in allowedLangs
+        if (filtered.length) return filtered;
+
+        // 4. Fallback: all voices
+        return voices;
+    }
+
+    // --- Helper global para inicializar el toggle entre IPA y palabra (reutilizable) ---
+    function setupToggleWordNav(wordData) {
+        try {
+            const toggleDiv = document.getElementById('toggle-word');
+            let showingIPA = false;
+            if (!window._toggleWordRevealed) window._toggleWordRevealed = {};
+            const wordKey = (wordData.word || '') + (wordData.ipa_word || '');
+            window._toggleWordRevealed[wordKey] = false;
+            if (window._toggleWordKeyHandler) {
+                try { document.removeEventListener('keydown', window._toggleWordKeyHandler); } catch(e){}
+                window._toggleWordKeyHandler = null;
+            }
+            function revealWord() {
+                if (!window._toggleWordRevealed[wordKey]) {
+                    showingIPA = true;
+                    if (toggleDiv) toggleDiv.textContent = wordData.ipa_word;
+                    toggleDiv && toggleDiv.classList.remove('word-display');
+                    toggleDiv && toggleDiv.classList.add('ipa-display');
+                    window._toggleWordRevealed[wordKey] = true;
+                } else {
+                    toggleWordDisplay();
+                }
+            }
+            function toggleWordDisplay() {
+                if (!window._toggleWordRevealed[wordKey]) return;
+                showingIPA = !showingIPA;
+                if (showingIPA) {
+                    if (toggleDiv) toggleDiv.textContent = wordData.ipa_word;
+                    toggleDiv && toggleDiv.classList.remove('word-display');
+                    toggleDiv && toggleDiv.classList.add('ipa-display');
+                } else {
+                    if (toggleDiv) toggleDiv.textContent = wordData.word;
+                    toggleDiv && toggleDiv.classList.remove('ipa-display');
+                    toggleDiv && toggleDiv.classList.add('word-display');
+                }
+            }
+            if (toggleDiv) {
+                toggleDiv.classList.remove('word-display');
+                toggleDiv.classList.add('ipa-display');
+                toggleDiv.textContent = '\u00A0';
+                window._toggleWordRevealed[wordKey] = false;
+                toggleDiv.onclick = revealWord;
+                window._toggleWordKeyHandler = function(e) {
+                    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+                    if ((e.key === 'u' || e.key === 'U') && toggleDiv && toggleDiv.offsetParent !== null) {
+                        e.preventDefault();
+                        revealWord();
+                    }
+                };
+                document.addEventListener('keydown', window._toggleWordKeyHandler);
+            }
+        } catch(e) {
+            console.error('setupToggleWordNav error', e);
+        }
+    }
+
+    // --- Inicia reproducción controlada con auto-advance después de 4 reproducciones ---
+    function startAutoAdvanceForWord(word, lang, ipaPhoneme=null) {
+        try {
+            window._skipIpaRepeatDuringAutoAdvance = true;
+            // Crear token cancelable para esta secuencia de auto-advance
+            const myToken = (window._autoAdvanceToken = (window._autoAdvanceToken || 0) + 1);
+            try { console.debug('[AutoAdvance] start', {token: myToken, word: word, lang: lang}); } catch(e){}
+            let ttsRepeatCount = 0;
+            const ttsEndHandler = function() {
+                try {
+                    // Si la secuencia fue cancelada externamente, ignorar
+                    if (window._autoAdvanceToken !== myToken) {
+                        try { console.debug('[AutoAdvance] canceled (token mismatch)', {expected: myToken, current: window._autoAdvanceToken}); } catch(e){}
+                        return;
+                    }
+                    ttsRepeatCount++;
+                    try { console.debug('[AutoAdvance] ttsEndHandler', {token: myToken, count: ttsRepeatCount}); } catch(e){}
+                    if (ttsRepeatCount < 4) {
+                        setTimeout(() => {
+                            if (window._autoAdvanceToken !== myToken) {
+                                try { console.debug('[AutoAdvance] canceled before retry', {token: myToken}); } catch(e){}
+                                return;
+                            }
+                            try { console.debug('[AutoAdvance] replaying', {token: myToken, nextCount: ttsRepeatCount+1}); } catch(e){}
+                            const forceGoogleFirst = !!(ipaPhoneme && (lang || '').toString().toLowerCase().startsWith('fr'));
+                            playTTS(word, lang, ttsEndHandler, { ipa: ipaPhoneme, forceGoogleFirst });
+                        }, 5000);
+                    } else {
+                        setTimeout(() => {
+                            try {
+                                if (window._autoAdvanceToken !== myToken) {
+                                    try { console.debug('[AutoAdvance] canceled before final advance', {token: myToken}); } catch(e){}
+                                    return;
+                                }
+                                window._skipNextUpdate = true;
+                                try { console.debug('[AutoAdvance] will programmatic click right (skip update)', {token: myToken}); } catch(e){}
+                                const rightBtn = document.getElementById('arrow-right');
+                                if (rightBtn) rightBtn.click();
+                            } catch(e) { console.error('Auto-advance error', e); }
+                        }, 4000);
+                        window._skipIpaRepeatDuringAutoAdvance = false;
+                    }
+                } catch(e) { console.error('ttsEndHandler error', e); }
+            };
+            // Primera reproducción (cancelable)
+            const forceGoogleFirst = !!(ipaPhoneme && (lang || '').toString().toLowerCase().startsWith('fr'));
+            playTTS(word, lang, ttsEndHandler, { ipa: ipaPhoneme, forceGoogleFirst });
+        } catch(e) {
+            console.error('startAutoAdvanceForWord error', e);
+        }
+    }
+
+    let ipaRepeatInterval = null;
+    let ipaRepeatStarter = null;
+    let ipaVoiceIndex = 0;
+    let ipaVoices = [];
+
+    function ensureVoicesLoaded() {
+        return new Promise(resolve => {
+            let voices = window.speechSynthesis.getVoices();
+            if (voices && voices.length) {
+                resolve(voices);
+            } else {
+                window.speechSynthesis.onvoiceschanged = function() {
+                    resolve(window.speechSynthesis.getVoices());
+                };
+            }
+        });
+    }
+
+    async function speakIPA(wordText, ipaPhoneme, lang, onEnd=null) {
+        // Evitar que el loop de IPA reproduzca cuando el contador automático está gestionando repeticiones
+        if (window._skipIpaRepeatDuringAutoAdvance) return;
+        let cleanText = (wordText || '').replace(/[\\/]/g, '').replace(/\s+/g, ' ').trim();
+        const forceGoogleFirst = !!(ipaPhoneme && (lang || '').toString().toLowerCase().startsWith('fr'));
+        playTTS(cleanText, lang, onEnd, { ipa: ipaPhoneme, forceGoogleFirst });
+    }
+
+    function startIPARepeat(wordText, ipaPhoneme, lang, firstDelay=0, onEnd=null) {
+        // Clear any previous starter timeout or interval
+        try { if (ipaRepeatStarter) { clearTimeout(ipaRepeatStarter); ipaRepeatStarter = null; } } catch(e){}
+        try { if (ipaRepeatInterval) { clearInterval(ipaRepeatInterval); ipaRepeatInterval = null; } } catch(e){}
+        // Schedule the first background IPA play 5s after firstDelay, then every 5s
+        ipaRepeatStarter = setTimeout(function() {
+            try {
+                if (!window._skipIpaRepeatDuringAutoAdvance) speakIPA(wordText, ipaPhoneme, lang, onEnd);
+            } catch(e){}
+            ipaRepeatInterval = setInterval(function() {
+                try { if (!window._skipIpaRepeatDuringAutoAdvance) speakIPA(wordText, ipaPhoneme, lang, onEnd); } catch(e){}
+            }, 5000);
+        }, firstDelay + 5000);
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // --- Delete current word (UI + API) ---
+        const deleteBtn = document.getElementById('delete-word-btn');
+        function _setDeleteBtnVisible(visible) {
+            if (!deleteBtn) return;
+            deleteBtn.style.display = visible ? 'flex' : 'none';
+        }
+        function _setCurrentWordForDelete(word, ipa) {
+            window._currentWordForDelete = word || null;
+            window._currentIpaForDelete = ipa || null;
+            _setDeleteBtnVisible(!!window._currentWordForDelete);
+        }
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', async function() {
+                const w = window._currentWordForDelete;
+                if (!w) return;
+                const ok = window.confirm(`Are you sure you want to delete this word from the database?\n\n${w}`);
+                if (!ok) return;
+
+                deleteBtn.disabled = true;
+                const prevText = deleteBtn.textContent;
+                try {
+                    const resp = await fetch('/api/delete_word', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ word: w })
+                    });
+                    const data = await resp.json().catch(() => ({}));
+                    if (!resp.ok || !data || data.success !== true) {
+                        const msg = (data && data.error) ? data.error : 'Delete failed.';
+                        window.alert(msg);
+                        return;
+                    }
+
+                    // Clear local state and move on to the next word.
+                    _setCurrentWordForDelete(null, null);
+                    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch(e) {}
+                    try {
+                        if (window._currentGoogleAudio && typeof window._currentGoogleAudio.pause === 'function') {
+                            window._currentGoogleAudio.pause();
+                            window._currentGoogleAudio.currentTime = 0;
+                        }
+                    } catch(e) {}
+                    try {
+                        // Stop resets timers and shows Start; then we immediately Start again.
+                        const stopBtn = document.getElementById('stop-btn');
+                        const startBtn = document.getElementById('start-btn');
+                        if (stopBtn) stopBtn.click();
+                        if (startBtn) startBtn.click();
+                        else window.location.reload();
+                    } catch(e) {
+                        window.location.reload();
+                    }
+                } finally {
+                    deleteBtn.disabled = false;
+                    if (deleteBtn) deleteBtn.textContent = prevText;
+                }
+            });
+        }
+
+        // Atajos de teclado para flechas: j (derecha), f (izquierda)
+        document.addEventListener('keydown', function(e) {
+            // Ignorar si hay un input o textarea enfocado
+            if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+            // Solo si los botones están visibles
+            const leftBtn = document.getElementById('arrow-left');
+            const rightBtn = document.getElementById('arrow-right');
+            const startBtn = document.getElementById('start-btn');
+            const stopBtn = document.getElementById('stop-btn');
+            if (e.key === 'j' || e.key === 'J') {
+                if (rightBtn && !rightBtn.disabled) {
+                    // Cancelar audio antes de cambiar palabra
+                    if (window.speechSynthesis) window.speechSynthesis.cancel();
+                    if (window._currentGoogleAudio && typeof window._currentGoogleAudio.pause === 'function') {
+                        window._currentGoogleAudio.pause();
+                        window._currentGoogleAudio.currentTime = 0;
+                    }
+                    rightBtn.click();
+                }
+            } else if (e.key === 'f' || e.key === 'F') {
+                if (leftBtn && !leftBtn.disabled) {
+                    if (window.speechSynthesis) window.speechSynthesis.cancel();
+                    if (window._currentGoogleAudio && typeof window._currentGoogleAudio.pause === 'function') {
+                        window._currentGoogleAudio.pause();
+                        window._currentGoogleAudio.currentTime = 0;
+                    }
+                    leftBtn.click();
+                }
+            } else if (e.code === 'Space' || e.key === ' ') {
+                // Si está visible el botón Start
+                if (startBtn && startBtn.offsetParent !== null && !startBtn.disabled) {
+                    e.preventDefault();
+                    if (window.speechSynthesis) window.speechSynthesis.cancel();
+                    if (window._currentGoogleAudio && typeof window._currentGoogleAudio.pause === 'function') {
+                        window._currentGoogleAudio.pause();
+                        window._currentGoogleAudio.currentTime = 0;
+                    }
+                    startBtn.click();
+                } else if (stopBtn && stopBtn.offsetParent !== null && !stopBtn.disabled) {
+                    e.preventDefault();
+                    if (window.speechSynthesis) window.speechSynthesis.cancel();
+                    if (window._currentGoogleAudio && typeof window._currentGoogleAudio.pause === 'function') {
+                        window._currentGoogleAudio.pause();
+                        window._currentGoogleAudio.currentTime = 0;
+                    }
+                    stopBtn.click();
+                }
+            }
+        });
+        var startBtn = document.getElementById('start-btn');
+        if (startBtn) {
+            startBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                startBtn.style.display = 'none';
+                setTimeout(function() {
+                    fetch('/api/random_word').then(resp => resp.json()).then(async data => {
+                        var cont = document.getElementById('ipa-word-container');
+                        if (data.error) {
+                            cont.innerHTML = '<div class="round-message error">'+data.error+'</div>';
+                            _setCurrentWordForDelete(null, null);
+                        } else {
+                            _setCurrentWordForDelete(data.word, data.ipa_word);
+                            cont.innerHTML = `
+                                <div id="toggle-word" class="sentence ipa-display" role="button" tabindex="0" aria-label="Revelar o alternar palabra" aria-keyshortcuts="U" title="Revelar/alternar (U)" style="display:inline-block;cursor:pointer;user-select:none;">&nbsp;</div>
+                                <div style="margin-top:32px; display:flex; justify-content:center; gap:32px;">
+                                    <button id="arrow-left" type="button" class="arrow-btn" title="Incorrecto (F)" aria-label="Incorrecto" aria-keyshortcuts="F" style="display:flex;align-items:center;justify-content:center;font-size:2.3em;font-weight:bold;padding:0.4em 0.7em;border-radius:50%;border:none;background:#23272f;color:#ef4444;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;line-height:1;"><span style="display:flex;align-items:center;justify-content:center;font-size:1.2em;font-weight:900;">✗</span></button>
+                                    <button id="arrow-right" type="button" class="arrow-btn" title="Correcto (J)" aria-label="Correcto" aria-keyshortcuts="J" style="display:flex;align-items:center;justify-content:center;font-size:2.3em;font-weight:bold;padding:0.4em 0.7em;border-radius:50%;border:none;background:#23272f;color:#22c55e;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;line-height:1;"><span style="display:flex;align-items:center;justify-content:center;font-size:1.2em;font-weight:900;">✓</span></button>
+                                </div>
+                                <div id="association-row" style="margin-top:18px; display:flex; justify-content:center; align-items:center; min-height:2.5em;">
+                                    <div id="association-content" style="display:flex; align-items:center; justify-content:center; max-width:90vw; transition:opacity 0.25s; opacity:1;">
+                                        <button id="show-association-btn" type="button" title="Mostrar asociación (I)" aria-label="Mostrar asociación" aria-keyshortcuts="I" style="font-size:1.7em;background:none;border:none;cursor:pointer;width:2.5em;height:2.5em;line-height:1;vertical-align:middle;padding:0;transition:opacity 0.2s;display:flex;align-items:center;justify-content:center;">&#x1F4A1;</button>
+                                    </div>
+                                </div>
+                                <div style="margin-top:24px; display:flex; justify-content:center;">
+                                    <button id="stop-btn" type="button" class="arrow-btn" title="Stop (Espacio)" aria-label="Stop" aria-keyshortcuts="Space" style="font-size:1.1em;padding:0.5em 2.5em;border-radius:12px;border:none;background:#fde047;color:#18181b;font-weight:bold;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">Stop</button>
+                                </div>
+                            `;
+                            // Handler para mostrar la asociación (clic y tecla 'i')
+                            const showAssocBtn = document.getElementById('show-association-btn');
+                            const assocRow = document.getElementById('association-row');
+                            if (showAssocBtn && assocRow) {
+                                // Limpieza: quitar handler anterior si existe
+                                if (window._showAssocKeyHandler) {
+                                    document.removeEventListener('keydown', window._showAssocKeyHandler);
+                                    window._showAssocKeyHandler = null;
+                                }
+                                showAssocBtn.style.display = 'inline-block';
+                                showAssocBtn.disabled = false;
+                                function revealAssociation() {
+                                    showAssocBtn.disabled = true;
+                                    const assocContent = document.getElementById('association-content');
+                                    if (assocContent) {
+                                        assocContent.style.opacity = 0;
+                                    }
+                                    setTimeout(() => {
+                                        fetch('/api/get_association', {
+                                            method: 'POST',
+                                            headers: {'Content-Type': 'application/json'},
+                                            body: JSON.stringify({word: (data.word || (typeof newData !== 'undefined' ? newData.word : ''))})
+                                        })
+                                        .then(resp => resp.json())
+                                        .then(result => {
+                                            if (assocContent) {
+                                                const esc = (s) => (s || '').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+                                                const raw = result.association ? result.association.replace(/\n/g, ' ') : '';
+                                                const parts = raw.split(',').map(p => p.trim()).filter(Boolean);
+                                                const html = parts.length ? parts.map(p => esc(p)).join('<br>') : '';
+                                                assocContent.innerHTML = `<div style="white-space:normal;text-align:center;color:#fde047;font-size:1.7em;line-height:1.2;">${html}</div>`;
+                                                assocContent.style.opacity = 1;
+                                            }
+                                        })
+                                        .catch(() => {
+                                            if (assocContent) {
+                                                assocContent.innerHTML = `<div style="white-space:normal;text-align:center;color:#fde047;font-size:1.7em;line-height:1.2;"></div>`;
+                                                assocContent.style.opacity = 1;
+                                            }
+                                        });
+                                    }, 200);
+                                }
+                                showAssocBtn.onclick = revealAssociation;
+                                // Tecla 'i' para mostrar asociación
+                                const keyHandler = function(e) {
+                                    if ((e.key === 'i' || e.key === 'I') && !e.repeat && showAssocBtn && !showAssocBtn.disabled && showAssocBtn.style.display !== 'none') {
+                                        revealAssociation();
+                                    }
+                                };
+                                document.addEventListener('keydown', keyHandler);
+                                window._showAssocKeyHandler = keyHandler;
+                            }
+                            // Alternar entre IPA y palabra normal al hacer click
+                            (function setupToggleWord() {
+                                const toggleDiv = document.getElementById('toggle-word');
+                                let showingIPA = false;
+                                // revealed debe ser global para cada palabra
+                                if (!window._toggleWordRevealed) window._toggleWordRevealed = {};
+                                const wordKey = (data.word || '') + (data.ipa_word || '');
+                                window._toggleWordRevealed[wordKey] = false;
+                                if (window._toggleWordKeyHandler) {
+                                    try { document.removeEventListener('keydown', window._toggleWordKeyHandler); } catch(e){}
+                                    window._toggleWordKeyHandler = null;
+                                }
+                                function revealWord() {
+                                    if (!window._toggleWordRevealed[wordKey]) {
+                                        showingIPA = true;
+                                        toggleDiv.textContent = data.ipa_word;
+                                        toggleDiv.classList.remove('word-display');
+                                        toggleDiv.classList.add('ipa-display');
+                                        window._toggleWordRevealed[wordKey] = true;
+                                    } else {
+                                        toggleWordDisplay();
+                                    }
+                                }
+                                function toggleWordDisplay() {
+                                    if (!window._toggleWordRevealed[wordKey]) return;
+                                    showingIPA = !showingIPA;
+                                    if (showingIPA) {
+                                        toggleDiv.textContent = data.ipa_word;
+                                        toggleDiv.classList.remove('word-display');
+                                        toggleDiv.classList.add('ipa-display');
+                                    } else {
+                                        toggleDiv.textContent = data.word;
+                                        toggleDiv.classList.remove('ipa-display');
+                                        toggleDiv.classList.add('word-display');
+                                    }
+                                }
+                                if (toggleDiv) {
+                                    toggleDiv.classList.remove('word-display');
+                                    toggleDiv.classList.add('ipa-display');
+                                    toggleDiv.textContent = '\u00A0';
+                                    try {
+                                        toggleDiv.setAttribute('role', 'button');
+                                        toggleDiv.setAttribute('tabindex', '0');
+                                        toggleDiv.setAttribute('aria-keyshortcuts', 'U');
+                                        toggleDiv.setAttribute('aria-label', 'Revelar o alternar palabra');
+                                        toggleDiv.setAttribute('title', 'Revelar/alternar (U)');
+                                    } catch(e) {}
+                                    toggleDiv.onclick = revealWord;
+                                    toggleDiv.addEventListener('keydown', function(ev) {
+                                        if (ev.key === 'Enter' || ev.code === 'Space' || ev.key === ' ') {
+                                            ev.preventDefault();
+                                            revealWord();
+                                        }
+                                    });
+                                    window._toggleWordKeyHandler = function(e) {
+                                        if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+                                        if ((e.key === 'u' || e.key === 'U') && toggleDiv && toggleDiv.offsetParent !== null) {
+                                            e.preventDefault();
+                                            revealWord();
+                                        }
+                                    };
+                                    document.addEventListener('keydown', window._toggleWordKeyHandler);
+                                }
+                            })();
+                            // Cancelar cualquier audio pendiente antes de reproducir la nueva palabra
+                            if (window.speechSynthesis) window.speechSynthesis.cancel();
+                            // Espera a que las voces estén listas antes de hablar la primera vez
+                            await ensureVoicesLoaded();
+                            // Iniciar auto-advance cancelable y el loop IPA
+                            startAutoAdvanceForWord(data.word, data.language || 'de', data.ipa_word || null);
+                            startIPARepeat(data.word, data.ipa_word || null, data.language || 'de');
+                            // Lógica para flechas
+                            function setupArrowHandlers(currentWord, currentLang) {
+                                const leftBtn = document.getElementById('arrow-left');
+                                const rightBtn = document.getElementById('arrow-right');
+                                if (leftBtn) {
+                                    leftBtn.onclick = function() {
+                                        // if (window.speechSynthesis) window.speechSynthesis.cancel();
+                                        leftBtn.disabled = true;
+                                        rightBtn && (rightBtn.disabled = true);
+                                        fetch('/api/update_counter', {
+                                            method: 'POST',
+                                            headers: {'Content-Type': 'application/json'},
+                                            body: JSON.stringify({word: currentWord, delta: -1})
+                                        }).finally(() => {
+                                            document.getElementById('ipa-word-container').innerHTML = '';
+                                            fetch('/api/random_word', {
+                                                method: 'POST',
+                                                headers: {'Content-Type': 'application/json'},
+                                                body: JSON.stringify({exclude: currentWord})
+                                            }).then(resp => resp.json()).then(newData => {
+                                                if (!newData.error) {
+                                                    _setCurrentWordForDelete(newData.word, newData.ipa_word);
+                                                    cont.innerHTML = `
+                                                        <div id="toggle-word" class="sentence ipa-display" role="button" tabindex="0" aria-label="Revelar o alternar palabra" aria-keyshortcuts="U" title="Revelar/alternar (U)" style="display:inline-block;cursor:pointer;user-select:none;">&nbsp;</div>
+                                                        <div style="margin-top:32px; display:flex; justify-content:center; gap:32px;">
+                                                            <button id="arrow-left" type="button" class="arrow-btn" title="Incorrecto (F)" aria-label="Incorrecto" aria-keyshortcuts="F" style="font-size:2em;padding:0.4em 0.7em;border-radius:50%;border:none;background:#23272f;color:#ef4444;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">✗</button>
+                                                            <button id="arrow-right" type="button" class="arrow-btn" title="Correcto (J)" aria-label="Correcto" aria-keyshortcuts="J" style="font-size:2em;padding:0.4em 0.7em;border-radius:50%;border:none;background:#23272f;color:#22c55e;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">✓</button>
+                                                        </div>
+                                                        <div id="association-row" style="margin-top:18px; display:flex; justify-content:center; align-items:center; min-height:2.5em;">
+                                                            <div id="association-content" style="display:flex; align-items:center; justify-content:center; max-width:90vw; transition:opacity 0.25s; opacity:1;">
+                                                                <button id="show-association-btn" type="button" title="Mostrar asociación (I)" aria-label="Mostrar asociación" aria-keyshortcuts="I" style="font-size:1.7em;background:none;border:none;cursor:pointer;width:2.5em;height:2.5em;line-height:1;vertical-align:middle;padding:0;transition:opacity 0.2s;display:flex;align-items:center;justify-content:center;">&#x1F4A1;</button>
+                                                            </div>
+                                                        </div>
+                                                        <div style="margin-top:24px; display:flex; justify-content:center;">
+                                                            <button id="stop-btn" type="button" class="arrow-btn" title="Stop (Espacio)" aria-label="Stop" aria-keyshortcuts="Space" style="font-size:1.1em;padding:0.5em 2.5em;border-radius:12px;border:none;background:#fde047;color:#18181b;font-weight:bold;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">Stop</button>
+                                                        </div>`;
+                                                    // Handler para mostrar la asociación (clic y tecla 'i')
+                                                    const showAssocBtn = document.getElementById('show-association-btn');
+                                                    const assocRow = document.getElementById('association-row');
+                                                    if (showAssocBtn && assocRow) {
+                                                        if (window._showAssocKeyHandler) {
+                                                            document.removeEventListener('keydown', window._showAssocKeyHandler);
+                                                            window._showAssocKeyHandler = null;
+                                                        }
+                                                        showAssocBtn.style.display = 'inline-block';
+                                                        showAssocBtn.disabled = false;
+                                                        // Unificado: fade revealAssociation
+                                                        showAssocBtn.onclick = function() {
+                                                            showAssocBtn.disabled = true;
+                                                            const assocContent = document.getElementById('association-content');
+                                                            if (assocContent) assocContent.style.opacity = 0;
+                                                            setTimeout(() => {
+                                                                fetch('/api/get_association', {
+                                                                    method: 'POST',
+                                                                    headers: {'Content-Type': 'application/json'},
+                                                                    body: JSON.stringify({word: newData.word})
+                                                                })
+                                                                .then(resp => resp.json())
+                                                                .then(result => {
+                                                                    if (assocContent) {
+                                                                        const esc = (s) => (s || '').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+                                                                        const raw = result.association ? result.association.replace(/\n/g, ' ') : '';
+                                                                        const parts = raw.split(',').map(p => p.trim()).filter(Boolean);
+                                                                        const html = parts.length ? parts.map(p => esc(p)).join('<br>') : '';
+                                                                        assocContent.innerHTML = `<div style="white-space:normal;text-align:center;color:#fde047;font-size:1.7em;line-height:1.2;">${html}</div>`;
+                                                                        assocContent.style.opacity = 1;
+                                                                    }
+                                                                })
+                                                                .catch(() => {
+                                                                    if (assocContent) {
+                                                                        assocContent.innerHTML = `<div style="white-space:normal;text-align:center;color:#fde047;font-size:1.7em;line-height:1.2;"></div>`;
+                                                                        assocContent.style.opacity = 1;
+                                                                    }
+                                                                });
+                                                            }, 200);
+                                                        };
+                                                        // Tecla 'i' para mostrar asociación
+                                                        const keyHandler = function(e) {
+                                                            if ((e.key === 'i' || e.key === 'I') && !e.repeat && showAssocBtn && !showAssocBtn.disabled && showAssocBtn.style.display !== 'none') {
+                                                                showAssocBtn.onclick();
+                                                            }
+                                                        };
+                                                        document.addEventListener('keydown', keyHandler);
+                                                        window._showAssocKeyHandler = keyHandler;
+                                                    }
+                                                    // Alternar entre IPA y palabra normal al hacer click o con 'u'
+                                                    (function setupToggleWord() {
+                                                        const toggleDiv = document.getElementById('toggle-word');
+                                                        let showingIPA = false;
+                                                        if (!window._toggleWordRevealed) window._toggleWordRevealed = {};
+                                                        const wordKey = (newData.word || '') + (newData.ipa_word || '');
+                                                        window._toggleWordRevealed[wordKey] = false;
+                                                        if (window._toggleWordKeyHandler) {
+                                                            try { document.removeEventListener('keydown', window._toggleWordKeyHandler); } catch(e){}
+                                                            window._toggleWordKeyHandler = null;
+                                                        }
+                                                        function revealWord() {
+                                                            if (!window._toggleWordRevealed[wordKey]) {
+                                                                showingIPA = true;
+                                                                toggleDiv.textContent = newData.ipa_word;
+                                                                toggleDiv.classList.remove('word-display');
+                                                                toggleDiv.classList.add('ipa-display');
+                                                                window._toggleWordRevealed[wordKey] = true;
+                                                            } else {
+                                                                toggleWordDisplay();
+                                                            }
+                                                        }
+                                                        function toggleWordDisplay() {
+                                                            if (!window._toggleWordRevealed[wordKey]) return;
+                                                            showingIPA = !showingIPA;
+                                                            if (showingIPA) {
+                                                                toggleDiv.textContent = newData.ipa_word;
+                                                                toggleDiv.classList.remove('word-display');
+                                                                toggleDiv.classList.add('ipa-display');
+                                                            } else {
+                                                                toggleDiv.textContent = newData.word;
+                                                                toggleDiv.classList.remove('ipa-display');
+                                                                toggleDiv.classList.add('word-display');
+                                                            }
+                                                        }
+                                                        if (toggleDiv) {
+                                                            toggleDiv.classList.remove('word-display');
+                                                            toggleDiv.classList.add('ipa-display');
+                                                            toggleDiv.textContent = '\u00A0';
+                                                            window._toggleWordRevealed[wordKey] = false;
+                                                            toggleDiv.onclick = revealWord;
+                                                            window._toggleWordKeyHandler = function(e) {
+                                                                if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+                                                                if ((e.key === 'u' || e.key === 'U') && toggleDiv && toggleDiv.offsetParent !== null) {
+                                                                    e.preventDefault();
+                                                                    revealWord();
+                                                                }
+                                                            };
+                                                            document.addEventListener('keydown', window._toggleWordKeyHandler);
+                                                        }
+                                                    })();
+                                                    // Cancelar cualquier audio pendiente antes de reproducir la nueva palabra
+                                                    // if (window.speechSynthesis) window.speechSynthesis.cancel();
+                                                    // Limpiar intervalos previos y cancelar cualquier auto-advance anterior
+                                                    try { if (ipaRepeatStarter) { clearTimeout(ipaRepeatStarter); ipaRepeatStarter = null; } if (typeof ipaRepeatInterval !== 'undefined' && ipaRepeatInterval) { clearInterval(ipaRepeatInterval); ipaRepeatInterval = null; } } catch(e){}
+                                                    window._autoAdvanceToken = (window._autoAdvanceToken || 0) + 1;
+                                                    startAutoAdvanceForWord(newData.word, newData.language || 'de', newData.ipa_word || null);
+                                                    startIPARepeat(newData.word, newData.ipa_word || null, newData.language || 'de');
+                                                    setupArrowHandlers(newData.word, newData.language || 'de');
+                                                    // Handler para el botón Stop (también en navegación)
+                                                    const stopBtn = document.getElementById('stop-btn');
+                                                    if (stopBtn) {
+                                                        stopBtn.onclick = function() {
+                                                            // if (window.speechSynthesis) window.speechSynthesis.cancel();
+                                                            try { if (ipaRepeatStarter) { clearTimeout(ipaRepeatStarter); ipaRepeatStarter = null; } if (typeof ipaRepeatInterval !== 'undefined' && ipaRepeatInterval) { clearInterval(ipaRepeatInterval); ipaRepeatInterval = null; } } catch(e){}
+                                                            cont.innerHTML = '';
+                                                            const startBtn = document.getElementById('start-btn');
+                                                            if (startBtn) startBtn.style.display = '';
+                                                            _setCurrentWordForDelete(null, null);
+                                                            _setCurrentWordForDelete(null, null);
+                                                        };
+                                                    }
+                                                } else {
+                                                    cont.innerHTML = '<div class="round-message error">No hay más palabras.</div>';
+                                                }
+                                                setTimeout(() => {
+                                                    const l = document.getElementById('arrow-left');
+                                                    const r = document.getElementById('arrow-right');
+                                                    if (l) l.disabled = false;
+                                                    if (r) r.disabled = false;
+                                                }, 100);
+                                            });
+                                        });
+                                    };
+                                }
+                                if (rightBtn) {
+                                    rightBtn.onclick = function(event) {
+                                            // if (window.speechSynthesis) window.speechSynthesis.cancel();
+                                            // Comprobar si debemos saltar la actualización del counter (seteado por el avance automático)
+                                            const skipUpdate = !!window._skipNextUpdate;
+                                            if (skipUpdate) {
+                                                window._skipNextUpdate = false;
+                                                try { console.debug('[AutoAdvance] rightBtn handler: skipping update_counter for', {currentWord}); } catch(e){}
+                                            } else {
+                                                try { console.debug('[AutoAdvance] rightBtn handler: normal user advance for', {currentWord}); } catch(e){}
+                                            }
+                                            rightBtn.disabled = true;
+                                            leftBtn && (leftBtn.disabled = true);
+                                            if (skipUpdate) {
+                                                // Programmatic advance: do NOT call update_counter, only fetch next word
+                                                document.getElementById('ipa-word-container').innerHTML = '';
+                                                fetch('/api/random_word', {
+                                                    method: 'POST',
+                                                    headers: {'Content-Type': 'application/json'},
+                                                    body: JSON.stringify({exclude: currentWord})
+                                                }).then(resp => resp.json()).then(newData => {
+                                                    if (!newData.error) {
+                                                        _setCurrentWordForDelete(newData.word, newData.ipa_word);
+                                                        cont.innerHTML = `
+                                                            <div id="toggle-word" class="sentence ipa-display" style="display:inline-block;cursor:pointer;user-select:none;">&nbsp;</div>
+                                                            <div style="margin-top:32px; display:flex; justify-content:center; gap:32px;">
+                                                                <button id="arrow-left" class="arrow-btn" style="font-size:2em;padding:0.4em 0.7em;border-radius:50%;border:none;background:#23272f;color:#ef4444;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">✗</button>
+                                                                <button id="arrow-right" class="arrow-btn" style="font-size:2em;padding:0.4em 0.7em;border-radius:50%;border:none;background:#23272f;color:#22c55e;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">✓</button>
+                                                            </div>
+                                                            <div id="association-row" style="margin-top:18px; display:flex; justify-content:center; align-items:center; min-height:2.5em;">
+                                                                <div id="association-content" style="display:flex; align-items:center; justify-content:center; max-width:90vw; transition:opacity 0.25s; opacity:1;">
+                                                                    <button id="show-association-btn" title="Mostrar asociación" style="font-size:1.7em;background:none;border:none;cursor:pointer;width:2.5em;height:2.5em;line-height:1;vertical-align:middle;padding:0;transition:opacity 0.2s;display:flex;align-items:center;justify-content:center;">&#x1F4A1;</button>
+                                                                </div>
+                                                            </div>
+                                                            <div style="margin-top:24px; display:flex; justify-content:center;">
+                                                                <button id="stop-btn" class="arrow-btn" style="font-size:1.1em;padding:0.5em 2.5em;border-radius:12px;border:none;background:#fde047;color:#18181b;font-weight:bold;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">Stop</button>
+                                                            </div>`;
+                                                        const showAssocBtn = document.getElementById('show-association-btn');
+                                                        const assocRow = document.getElementById('association-row');
+                                                        if (showAssocBtn && assocRow) {
+                                                            if (window._showAssocKeyHandler) {
+                                                                document.removeEventListener('keydown', window._showAssocKeyHandler);
+                                                                window._showAssocKeyHandler = null;
+                                                            }
+                                                            showAssocBtn.style.display = 'inline-block';
+                                                            showAssocBtn.disabled = false;
+                                                            showAssocBtn.onclick = function() {
+                                                                showAssocBtn.disabled = true;
+                                                                const assocContent = document.getElementById('association-content');
+                                                                if (assocContent) assocContent.style.opacity = 0;
+                                                                setTimeout(() => {
+                                                                    fetch('/api/get_association', {
+                                                                        method: 'POST',
+                                                                        headers: {'Content-Type': 'application/json'},
+                                                                        body: JSON.stringify({word: newData.word})
+                                                                    })
+                                                                    .then(resp => resp.json())
+                                                                    .then(result => {
+                                                                        if (assocContent) {
+                                                                            assocContent.innerHTML = `<span class='association-oneline'>${result.association ? result.association.replace(/\n/g, ' ') : ''}</span>`;
+                                                                            assocContent.style.opacity = 1;
+                                                                        }
+                                                                    })
+                                                                    .catch(() => {
+                                                                        if (assocContent) {
+                                                                            assocContent.innerHTML = `<span class='association-oneline'></span>`;
+                                                                            assocContent.style.opacity = 1;
+                                                                        }
+                                                                    });
+                                                                }, 200);
+                                                            };
+                                                            const keyHandler = function(e) {
+                                                                if ((e.key === 'i' || e.key === 'I') && !e.repeat && showAssocBtn && !showAssocBtn.disabled && showAssocBtn.style.display !== 'none') {
+                                                                    showAssocBtn.onclick();
+                                                                }
+                                                            };
+                                                            document.addEventListener('keydown', keyHandler);
+                                                            window._showAssocKeyHandler = keyHandler;
+                                                        }
+                                                        setupToggleWordNav(newData);
+                                                        try { if (ipaRepeatStarter) { clearTimeout(ipaRepeatStarter); ipaRepeatStarter = null; } if (typeof ipaRepeatInterval !== 'undefined' && ipaRepeatInterval) { clearInterval(ipaRepeatInterval); ipaRepeatInterval = null; } } catch(e){}
+                                                        window._autoAdvanceToken = (window._autoAdvanceToken || 0) + 1;
+                                                        startAutoAdvanceForWord(newData.word, newData.language || 'de', newData.ipa_word || null);
+                                                        startIPARepeat(newData.word, newData.ipa_word || null, newData.language || 'de');
+                                                        setupArrowHandlers(newData.word, newData.language || 'de');
+                                                        const stopBtn = document.getElementById('stop-btn');
+                                                        if (stopBtn) {
+                                                            stopBtn.onclick = function() {
+                                                                if (window.speechSynthesis) window.speechSynthesis.cancel();
+                                                                try { if (ipaRepeatStarter) { clearTimeout(ipaRepeatStarter); ipaRepeatStarter = null; } if (typeof ipaRepeatInterval !== 'undefined' && ipaRepeatInterval) { clearInterval(ipaRepeatInterval); ipaRepeatInterval = null; } } catch(e){}
+                                                                cont.innerHTML = '';
+                                                                const startBtn = document.getElementById('start-btn');
+                                                                if (startBtn) startBtn.style.display = '';
+                                                                _setCurrentWordForDelete(null, null);
+                                                            };
+                                                        }
+                                                    } else {
+                                                        cont.innerHTML = '<div class="round-message error">No hay más palabras.</div>';
+                                                    }
+                                                    setTimeout(() => {
+                                                        const l = document.getElementById('arrow-left');
+                                                        const r = document.getElementById('arrow-right');
+                                                        if (l) l.disabled = false;
+                                                        if (r) r.disabled = false;
+                                                    }, 100);
+                                                });
+                                            } else {
+                                                // Normal user click: update counter then fetch next
+                                                fetch('/api/update_counter', {
+                                                    method: 'POST',
+                                                    headers: {'Content-Type': 'application/json'},
+                                                    body: JSON.stringify({word: currentWord, delta: 1})
+                                                }).then(r => r.json()).then(() => {
+                                                    document.getElementById('ipa-word-container').innerHTML = '';
+                                                    fetch('/api/random_word', {
+                                                        method: 'POST',
+                                                        headers: {'Content-Type': 'application/json'},
+                                                        body: JSON.stringify({exclude: currentWord})
+                                                    }).then(resp => resp.json()).then(newData => {
+                                                        if (!newData.error) {
+                                                            _setCurrentWordForDelete(newData.word, newData.ipa_word);
+                                                            cont.innerHTML = `
+                                                                <div id="toggle-word" class="sentence ipa-display" style="display:inline-block;cursor:pointer;user-select:none;">&nbsp;</div>
+                                                                <div style="margin-top:32px; display:flex; justify-content:center; gap:32px;">
+                                                                    <button id="arrow-left" class="arrow-btn" style="font-size:2em;padding:0.4em 0.7em;border-radius:50%;border:none;background:#23272f;color:#ef4444;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">✗</button>
+                                                                    <button id="arrow-right" class="arrow-btn" style="font-size:2em;padding:0.4em 0.7em;border-radius:50%;border:none;background:#23272f;color:#22c55e;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">✓</button>
+                                                                </div>
+                                                                <div id="association-row" style="margin-top:18px; display:flex; justify-content:center; align-items:center; min-height:2.5em;">
+                                                                    <div id="association-content" style="display:flex; align-items:center; justify-content:center; max-width:90vw; transition:opacity 0.25s; opacity:1;">
+                                                                        <button id="show-association-btn" title="Mostrar asociación" style="font-size:1.7em;background:none;border:none;cursor:pointer;width:2.5em;height:2.5em;line-height:1;vertical-align:middle;padding:0;transition:opacity 0.2s;display:flex;align-items:center;justify-content:center;">&#x1F4A1;</button>
+                                                                    </div>
+                                                                </div>
+                                                                <div style="margin-top:24px; display:flex; justify-content:center;">
+                                                                    <button id="stop-btn" class="arrow-btn" style="font-size:1.1em;padding:0.5em 2.5em;border-radius:12px;border:none;background:#fde047;color:#18181b;font-weight:bold;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">Stop</button>
+                                                                </div>`;
+                                                            const showAssocBtn = document.getElementById('show-association-btn');
+                                                            const assocRow = document.getElementById('association-row');
+                                                            if (showAssocBtn && assocRow) {
+                                                                if (window._showAssocKeyHandler) {
+                                                                    document.removeEventListener('keydown', window._showAssocKeyHandler);
+                                                                    window._showAssocKeyHandler = null;
+                                                                }
+                                                                showAssocBtn.style.display = 'inline-block';
+                                                                showAssocBtn.disabled = false;
+                                                                showAssocBtn.onclick = function() {
+                                                                    showAssocBtn.disabled = true;
+                                                                    const assocContent = document.getElementById('association-content');
+                                                                    if (assocContent) assocContent.style.opacity = 0;
+                                                                    setTimeout(() => {
+                                                                        fetch('/api/get_association', {
+                                                                            method: 'POST',
+                                                                            headers: {'Content-Type': 'application/json'},
+                                                                            body: JSON.stringify({word: newData.word})
+                                                                        })
+                                                                        .then(resp => resp.json())
+                                                                        .then(result => {
+                                                                            if (assocContent) {
+                                                                                const esc = (s) => (s || '').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+                                                                                const raw = result.association ? result.association.replace(/\n/g, ' ') : '';
+                                                                                const parts = raw.split(',').map(p => p.trim()).filter(Boolean);
+                                                                                const html = parts.length ? parts.map(p => esc(p)).join('<br>') : '';
+                                                                                assocContent.innerHTML = `<div style=\"white-space:normal;text-align:center;color:#fde047;font-size:1.7em;line-height:1.2;\">${html}</div>`;
+                                                                                assocContent.style.opacity = 1;
+                                                                            }
+                                                                        })
+                                                                        .catch(() => {
+                                                                            if (assocContent) {
+                                                                                assocContent.innerHTML = `<div style=\"white-space:normal;text-align:center;color:#fde047;font-size:1.7em;line-height:1.2;\"></div>`;
+                                                                                assocContent.style.opacity = 1;
+                                                                            }
+                                                                        });
+                                                                    }, 200);
+                                                                };
+                                                                const keyHandler = function(e) {
+                                                                    if ((e.key === 'i' || e.key === 'I') && !e.repeat && showAssocBtn && !showAssocBtn.disabled && showAssocBtn.style.display !== 'none') {
+                                                                        showAssocBtn.onclick();
+                                                                    }
+                                                                };
+                                                                document.addEventListener('keydown', keyHandler);
+                                                                window._showAssocKeyHandler = keyHandler;
+                                                            }
+                                                            setupToggleWordNav(newData);
+                                                            try { if (ipaRepeatStarter) { clearTimeout(ipaRepeatStarter); ipaRepeatStarter = null; } if (typeof ipaRepeatInterval !== 'undefined' && ipaRepeatInterval) { clearInterval(ipaRepeatInterval); ipaRepeatInterval = null; } } catch(e){}
+                                                            window._autoAdvanceToken = (window._autoAdvanceToken || 0) + 1;
+                                                            startAutoAdvanceForWord(newData.word, newData.language || 'de', newData.ipa_word || null);
+                                                            startIPARepeat(newData.word, newData.ipa_word || null, newData.language || 'de');
+                                                            setupArrowHandlers(newData.word, newData.language || 'de');
+                                                            const stopBtn = document.getElementById('stop-btn');
+                                                            if (stopBtn) {
+                                                                stopBtn.onclick = function() {
+                                                                    if (window.speechSynthesis) window.speechSynthesis.cancel();
+                                                                    try { if (ipaRepeatStarter) { clearTimeout(ipaRepeatStarter); ipaRepeatStarter = null; } if (typeof ipaRepeatInterval !== 'undefined' && ipaRepeatInterval) { clearInterval(ipaRepeatInterval); ipaRepeatInterval = null; } } catch(e){}
+                                                                    cont.innerHTML = '';
+                                                                    const startBtn = document.getElementById('start-btn');
+                                                                    if (startBtn) startBtn.style.display = '';
+                                                                    _setCurrentWordForDelete(null, null);
+                                                                };
+                                                            }
+                                                        } else {
+                                                            cont.innerHTML = '<div class="round-message error">No hay más palabras.</div>';
+                                                        }
+                                                        setTimeout(() => {
+                                                            const l = document.getElementById('arrow-left');
+                                                            const r = document.getElementById('arrow-right');
+                                                            if (l) l.disabled = false;
+                                                            if (r) r.disabled = false;
+                                                        }, 100);
+                                                    });
+                                                });
+                                            }
+                                        };
+                                }
+                            }
+                            // Inicializar handlers la primera vez
+                            setupArrowHandlers(data.word, data.language || 'de');
+                                                    // Handler para el botón Stop
+                                                    const stopBtn = document.getElementById('stop-btn');
+                                                    if (stopBtn) {
+                                                        stopBtn.onclick = function() {
+                                                            if (window.speechSynthesis) window.speechSynthesis.cancel();
+                                                            try { if (ipaRepeatStarter) { clearTimeout(ipaRepeatStarter); ipaRepeatStarter = null; } if (typeof ipaRepeatInterval !== 'undefined' && ipaRepeatInterval) { clearInterval(ipaRepeatInterval); ipaRepeatInterval = null; } } catch(e){}
+                                                            cont.innerHTML = '';
+                                                            const startBtn = document.getElementById('start-btn');
+                                                            if (startBtn) startBtn.style.display = '';
+                                                        };
+                                                    }
+                        }
+                    }).catch(() => {
+                        var cont = document.getElementById('ipa-word-container');
+                        cont.innerHTML = '<div class="round-message error">Error loading word</div>';
+                    });
+                }, 500);
+            });
+        }
+    });
+    </script>
+    {% endif %}
+    {% block content %}{% endblock %}
+</body>
+</html>

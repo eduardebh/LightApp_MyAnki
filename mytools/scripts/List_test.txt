@@ -1,0 +1,17 @@
+# List_test.txt
+#
+# Put one test entry per line. Lines starting with '#' are ignored.
+# Format (CSV-style, simple):
+#   word[,language[,list_id]]
+# - word: required (e.g. livre)
+# - language: optional ISO code (e.g. fr, de). Default depends on script.
+# - list_id: optional integer list id to use when inserting/updating (example: 22)
+#
+# Examples:
+livre,fr,22
+homme,fr,22
+idée,fr,22
+place,fr,22
+moment,fr,22
+problème,fr,22
+
