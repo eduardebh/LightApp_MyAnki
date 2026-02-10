@@ -56,6 +56,9 @@ Nota: `requirements.txt` incluye `-e ./mytools` (instalación editable del subm�
 git submodule update --init --recursive
 ```
 
+El submódulo `mytools` apunta a:
+- https://github.com/eduardebh/MyTools
+
 (Alternativa) Usa el script: `update_mytools.ps1`.
 
 ## Variables de entorno
@@ -122,7 +125,13 @@ Más detalles en [DB_MIGRATIONS.md](DB_MIGRATIONS.md).
 
 ## Despliegue con submódulos
 
-Si `mytools` es un submódulo privado, revisa [DEPLOY_SUBMODULES.md](DEPLOY_SUBMODULES.md) para configurar deploy keys / tokens en Render o CI.
+En despliegues/CI, asegúrate de inicializar los submódulos antes de instalar dependencias.
+
+- Para submódulos públicos normalmente basta con:
+  ```
+  git submodule update --init --recursive
+  ```
+- Si algún submódulo fuese privado, revisa [DEPLOY_SUBMODULES.md](DEPLOY_SUBMODULES.md) para configurar access tokens / deploy keys.
 
 ## Tests
 
@@ -145,6 +154,3 @@ python -m pytest -q
 
 Proyecto interno/experimental. Ajusta `app.secret_key` y configuración de seguridad antes de usar en producción.
 
-
-to pull the remote repositoriy:
-update_mytools.ps1

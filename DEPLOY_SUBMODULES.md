@@ -1,17 +1,21 @@
-# Despliegue de submódulos privados (Render / CI)
+# Despliegue de submódulos (Render / CI)
 
-Este documento explica cómo permitir que el entorno de despliegue (por ejemplo Render) pueda clonar submódulos privados, y proporciona snippets de `build` para que la fase de compilación inicialice los submódulos antes de instalar dependencias.
+Este documento explica cómo inicializar submódulos durante el despliegue/CI.
+
+- Si los submódulos son **públicos**, normalmente no necesitas credenciales extra.
+- Si algún submódulo es **privado**, necesitarás configurar acceso (deploy key o token).
 
 ## Resumen
 
-- Añade la clave privada (deploy key) del submódulo como un *secret* en tu servicio de despliegue.
-- En el `build` del servicio, escribe la clave a un fichero, ajusta `GIT_SSH_COMMAND` para usarla y ejecuta:
+- En el `build` del servicio, inicializa submódulos antes de instalar dependencias:
 
 ```
 git submodule update --init --recursive
 ```
 
-## Instrucciones para Render (Linux build)
+- Si el submódulo es **privado**, añade credenciales (deploy key o token) como *secret* y configura Git/SSH antes del `submodule update`.
+
+## Instrucciones para Render (Linux build) — submódulos privados (opcional)
 
 1. En el dashboard de Render (o tu CI), crea una secret/env var llamada `MYTOOLS_DEPLOY_KEY` que contenga la clave privada SSH (PEM) del deploy key (sin passphrase). Ejemplo: `-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----`.
 
