@@ -304,53 +304,76 @@ def api_tts():
             synthesis_input = texttospeech.SynthesisInput(ssml=ssml)
         else:
             synthesis_input = texttospeech.SynthesisInput(text=text)
-        # Selección aleatoria de voz neural (francés o alemán)
-        if language.startswith('fr'):
-            neural_voices = [
-                'fr-FR-Neural2-D', 'fr-FR-Neural2-E'
-            ]
-            standard_voices = [
-                'fr-FR-Standard-A', 'fr-FR-Standard-B', 'fr-FR-Standard-C', 'fr-FR-Standard-D', 'fr-FR-Standard-E'
-            ]
-            voice_pool = neural_voices if neural_voices else standard_voices
-            if not voice_pool:
-                voice_pool = neural_voices + standard_voices
-            voice_name = random.choice(voice_pool)
-            print(f'[TTS] GoogleCloud | Texto: "{text}" | Idioma: {language} | Voz: {voice_name}')
-            voice = texttospeech.VoiceSelectionParams(
-                language_code='fr-FR',
-                name=voice_name
-            )
-        elif language.startswith('de'):
-            neural_voices = [
-                'de-DE-Neural2-A', 'de-DE-Neural2-B', 'de-DE-Neural2-C', 'de-DE-Neural2-D'
-            ]
-            standard_voices = [
-                'de-DE-Standard-A', 'de-DE-Standard-B', 'de-DE-Standard-C', 'de-DE-Standard-D'
-            ]
-            voice_pool = neural_voices if neural_voices else standard_voices
-            if not voice_pool:
-                voice_pool = neural_voices + standard_voices
-            voice_name = random.choice(voice_pool)
-            print(f'[TTS] GoogleCloud | Texto: "{text}" | Idioma: {language} | Voz: {voice_name}')
-            voice = texttospeech.VoiceSelectionParams(
-                language_code='de-DE',
-                name=voice_name
-            )
+
+        # Prefer an effects profile optimized for phone speakers when the request comes from a mobile browser.
+        ua = (request.headers.get('User-Agent') or '')
+        ua_low = ua.lower()
+        is_mobile = ('android' in ua_low) or ('iphone' in ua_low) or ('ipad' in ua_low) or ('ipod' in ua_low)
+
+        audio_config_kwargs = {
+            'audio_encoding': texttospeech.AudioEncoding.MP3,
+        }
+        if is_mobile:
+            audio_config_kwargs['effects_profile_id'] = ['handset-class-device']
+        audio_config = texttospeech.AudioConfig(**audio_config_kwargs)
+
+        def _is_voice_not_available_error(err: Exception) -> bool:
+            msg = (str(err) or '').lower()
+            # Best-effort detection: Google returns InvalidArgument when a voice name is not supported.
+            return ('invalid argument' in msg) or ('invalidargument' in msg) or ('voice' in msg and 'not' in msg)
+
+        # Selección aleatoria de voz (con fallback robusto si Neural2 no está habilitado en el proyecto)
+        if language.startswith('fr') or language.startswith('de'):
+            if language.startswith('fr'):
+                lang_code = 'fr-FR'
+                voice_candidates = [
+                    'fr-FR-Neural2-D', 'fr-FR-Neural2-E',
+                    'fr-FR-Standard-A', 'fr-FR-Standard-B', 'fr-FR-Standard-C', 'fr-FR-Standard-D', 'fr-FR-Standard-E'
+                ]
+            else:
+                lang_code = 'de-DE'
+                voice_candidates = [
+                    'de-DE-Neural2-A', 'de-DE-Neural2-B', 'de-DE-Neural2-C', 'de-DE-Neural2-D',
+                    'de-DE-Standard-A', 'de-DE-Standard-B', 'de-DE-Standard-C', 'de-DE-Standard-D'
+                ]
+
+            random.shuffle(voice_candidates)
+            last_voice_err: Exception | None = None
+            response = None
+            for voice_name in voice_candidates:
+                voice = texttospeech.VoiceSelectionParams(language_code=lang_code, name=voice_name)
+                try:
+                    print(f'[TTS] GoogleCloud | Texto: "{text}" | Idioma: {language} | Voz: {voice_name} | mobile={is_mobile}')
+                    response = client.synthesize_speech(
+                        input=synthesis_input,
+                        voice=voice,
+                        audio_config=audio_config
+                    )
+                    if response and getattr(response, 'audio_content', None):
+                        break
+                except Exception as e:
+                    # If the specific voice isn't available, try the next candidate.
+                    if _is_voice_not_available_error(e):
+                        last_voice_err = e
+                        continue
+                    raise
+
+            if not response or not getattr(response, 'audio_content', None):
+                if last_voice_err is not None:
+                    raise last_voice_err
+                raise RuntimeError('No audio content from Google Cloud TTS')
         else:
             voice = texttospeech.VoiceSelectionParams(
                 language_code=language,
                 ssml_gender=texttospeech.SsmlVoiceGender.NEUTRAL
             )
-            print(f'[TTS] GoogleCloud | Texto: "{text}" | Idioma: {language} | Voz: NEUTRAL')
-        audio_config = texttospeech.AudioConfig(
-            audio_encoding=texttospeech.AudioEncoding.MP3
-        )
-        response = client.synthesize_speech(
-            input=synthesis_input,
-            voice=voice,
-            audio_config=audio_config
-        )
+            print(f'[TTS] GoogleCloud | Texto: "{text}" | Idioma: {language} | Voz: NEUTRAL | mobile={is_mobile}')
+            response = client.synthesize_speech(
+                input=synthesis_input,
+                voice=voice,
+                audio_config=audio_config
+            )
+
         audio_content = response.audio_content
         if audio_content:
             import base64

@@ -181,6 +181,14 @@
                 /['’]/.test(normalizedText)
             );
 
+            // On many phones (esp. Android), German SpeechSynthesis voices can be extremely robotic
+            // or only a single voice is available. In that case, prefer Google Cloud TTS.
+            const isMobileDevice = (typeof navigator !== 'undefined') ? /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '') : false;
+            const langLower = (normalizedLanguage || '').toString().toLowerCase();
+            const baseLang = langLower.includes('-') ? langLower.split('-')[0] : langLower;
+            const localVoices = window.speechSynthesis ? getNaturalVoices(normalizedLanguage) : [];
+            const autoForceGoogleForGerman = (baseLang === 'de') && (isMobileDevice || (localVoices && localVoices.length <= 1));
+
             async function _tryGoogleTTSOnce() {
                 try {
                     const payload = ipa ? { text: normalizedText, language: normalizedLanguage, ipa } : { text: normalizedText, language: normalizedLanguage };
@@ -225,11 +233,10 @@
 
             // If we have IPA (e.g., with liaison) and we're in French, prefer Google first to honor pronunciation.
             // Also prefer Google first for French elisions with apostrophes (e.g., “j’ai”), which some local voices misread.
-            if (forceGoogleFirst || forceGoogleForFrenchApostrophe) {
+            if (forceGoogleFirst || forceGoogleForFrenchApostrophe || autoForceGoogleForGerman) {
                 const ok = await _tryGoogleTTSOnce();
                 if (ok) return true;
-                const fallbackVoices = window.speechSynthesis ? getNaturalVoices(normalizedLanguage) : [];
-                const v = (fallbackVoices && fallbackVoices.length) ? fallbackVoices[Math.floor(Math.random() * fallbackVoices.length)] : null;
+                const v = (localVoices && localVoices.length) ? localVoices[Math.floor(Math.random() * localVoices.length)] : null;
                 return _speakLocalOnce(v);
             }
             // 1. Usar todas las voces locales filtradas (natural/high quality) antes de pasar a Google TTS
@@ -237,9 +244,9 @@
             if (!window._ttsVoiceOrder) window._ttsVoiceOrder = {};
             const key = normalizedText + '|' + normalizedLanguage;
             // 1. Construir el ciclo de 4 voces: primero todas las locales (al azar, sin repetir), luego Google TTS para completar
-            let voices = window.speechSynthesis ? getNaturalVoices(normalizedLanguage) : [];
+            let voices = localVoices;
             let cycle = [];
-            if (voices && voices.length) {
+            if (voices && voices.length && !(autoForceGoogleForGerman && isMobileDevice)) {
                 // Mezclar voces locales
                 const shuffled = voices.slice();
                 for (let i = shuffled.length - 1; i > 0; i--) {
@@ -350,6 +357,7 @@
 
         const langLower = (preferredLang || '').toString().toLowerCase();
         const baseLang = langLower.includes('-') ? langLower.split('-')[0] : langLower;
+        const isMobileDevice = (typeof navigator !== 'undefined') ? /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '') : false;
 
         // Many TTS engines don't pronounce raw IPA symbols reliably.
         // Use short example words that contain the target sound.
@@ -418,7 +426,8 @@
 
         // Mix: randomly use Google TTS; fallback to SpeechSynthesis.
         // If we have an IPA phoneme (e.g., German ö short/long), force Google first so it can output the pure sound.
-        const preferGoogle = ipaPhoneme ? true : (!hasLocalTTS ? true : (Math.random() < 0.5));
+        const germanMobilePreferGoogle = (baseLang === 'de') && isMobileDevice;
+        const preferGoogle = ipaPhoneme ? true : (!hasLocalTTS ? true : (germanMobilePreferGoogle ? true : (Math.random() < 0.5)));
         if (preferGoogle) {
             const ok = await tryGoogleFor(exampleWord, preferredLang, ipaPhoneme);
             if (!ok) speakLocal(exampleWord, preferredLang);
