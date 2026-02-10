@@ -108,6 +108,16 @@ La app levanta por defecto en `http://127.0.0.1:5000`.
 gunicorn -w 2 -b 0.0.0.0:5000 app_light:app
 ```
 
+### Render (start command)
+
+En Render, asegúrate de **bindear al puerto** que Render expone en `PORT`.
+
+```bash
+gunicorn -w 2 -b 0.0.0.0:$PORT LightApp.app_light:app
+```
+
+Nota: este repo incluye un wrapper `LightApp/app_light.py` para soportar el formato `LightApp.app_light:app`.
+
 ## Migraciones
 
 Hay un runner simple en `db_migrate.py` que aplica SQLs en `migrations/`.
