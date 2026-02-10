@@ -37,25 +37,6 @@ Real OpenAI tests (no mocks)
 - Table suite (strict compare against the reference table in the script):
 	- `python scripts/run_real_openai_table_suite.py`
 
-Backup database (Postgres)
-
-- Requires `pg_dump` (comes with PostgreSQL).
-- Uses `DATABASE_URL` from your environment or repo `.env`.
-
-```powershell
-python scripts/backup_database.py
-```
-
-Optional:
-
-```powershell
-# Explicit output folder
-python scripts/backup_database.py --out-dir backups
-
-# Pick format (custom|plain|tar|directory)
-python scripts/backup_database.py --format plain
-```
-
 Security & behaviour:
 - The OpenAI fallback is used only when an API key is present; network calls may
 	incur costs depending on your OpenAI plan. The package will not attempt to write

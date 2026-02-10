@@ -120,19 +120,6 @@ Hay un runner simple en `db_migrate.py` que aplica SQLs en `migrations/`.
 
 Más detalles en [DB_MIGRATIONS.md](DB_MIGRATIONS.md).
 
-## Backups
-
-Script de backup en `db_backup.py`:
-
-- Si encuentra `pg_dump` en PATH, genera un dump.
-- Si no, exporta tablas a CSV comprimido + un manifiesto SQL básico.
-
-Ejemplo:
-
-```powershell
-python db_backup.py --out backups/mydump.dump
-```
-
 ## Despliegue con submódulos
 
 Si `mytools` es un submódulo privado, revisa [DEPLOY_SUBMODULES.md](DEPLOY_SUBMODULES.md) para configurar deploy keys / tokens en Render o CI.
