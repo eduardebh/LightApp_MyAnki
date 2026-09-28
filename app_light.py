@@ -866,7 +866,7 @@ def register():
                     cur.close(); conn.close()
                 else:
                     pw_hash = generate_password_hash(password)
-                    cur.execute('INSERT INTO users (username, email, password_hash) VALUES (%s, %s, %s) RETURNING id', (username, None, pw_hash))
+                    cur.execute('INSERT INTO users (username, password_hash) VALUES (%s, %s) RETURNING id', (username, pw_hash))
                     user_id = cur.fetchone()[0]
                     conn.commit()
                     cur.close(); conn.close()
