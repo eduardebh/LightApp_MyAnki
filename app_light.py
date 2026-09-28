@@ -47,74 +47,38 @@ except Exception as e:
 
 load_dotenv()
 
-# Optional integration with external helper repo 'mytools' (added as submodule)
-# Preferred path: installed package `frequency_db_utils` (e.g., via `pip install -e ./mytools`).
-# Fallback: if running from a source checkout without installation, temporarily add `./mytools` to sys.path.
+
+def _resolve_database_url():
+    """Resolve DATABASE_URL from env or from the new Supabase project URL."""
+    db_url = os.environ.get('DATABASE_URL') or os.environ.get('SUPABASE_DATABASE_URL')
+    if db_url:
+        return db_url
+
+    project_url = os.environ.get('SUPABASE_PROJECT_URL') or os.environ.get('SUPABASE_URL')
+    if not project_url:
+        return None
+
+    project_ref = (
+        os.environ.get('SUPABASE_PROJECT_REF')
+        or project_url.rstrip('/').split('://', 1)[-1].replace('.supabase.co', '')
+    )
+    host = os.environ.get('SUPABASE_DB_HOST') or 'aws-0-eu-central-1.pooler.supabase.com'
+    port = os.environ.get('SUPABASE_DB_PORT') or '6543'
+    user = os.environ.get('SUPABASE_DB_USERNAME') or f'postgres.{project_ref}'
+    password = (
+        os.environ.get('SUPABASE_DB_PASSWORD')
+        or os.environ.get('DB_PASSWORD')
+        or os.environ.get('SUPABASE_PASSWORD')
+    )
+    if not password:
+        return None
+
+    db_url = f"postgresql://{user}:{password}@{host}:{port}/postgres?sslmode=require"
+    os.environ['DATABASE_URL'] = db_url
+    return db_url
+
+
 HAS_MYTOOLS = False
-add_word = None
-
-def _try_import_add_word():
-    import sys
-    import os
-    mytools_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mytools')
-    freq_utils_dir = os.path.join(mytools_dir, 'frequency_db_utils')
-    # Add both mytools and frequency_db_utils to sys.path if needed
-    if os.path.isdir(mytools_dir) and mytools_dir not in sys.path:
-        sys.path.insert(0, mytools_dir)
-    if os.path.isdir(freq_utils_dir) and freq_utils_dir not in sys.path:
-        sys.path.insert(0, freq_utils_dir)
-    try:
-        try:
-            from frequency_db_utils.word_adder import add_word as _add_word
-            return _add_word
-        except ModuleNotFoundError:
-            from mytools.frequency_db_utils.word_adder import add_word as _add_word
-            return _add_word
-    except ModuleNotFoundError:
-        # Try importing from mytools.frequency_db_utils if running as a submodule
-        try:
-            from mytools.frequency_db_utils.word_adder import add_word as _add_word
-            return _add_word
-        except ModuleNotFoundError:
-            raise ImportError("Could not import 'add_word' from frequency_db_utils.word_adder or mytools.frequency_db_utils.word_adder")
-
-try:
-    add_word = _try_import_add_word()
-    HAS_MYTOOLS = True
-    print('[STARTUP] mytools helper available: frequency_db_utils.word_adder.add_word')
-
-    # Runtime diagnostics: confirm exactly which copy of frequency_db_utils is imported.
-    try:
-        import sys as _sys
-        import frequency_db_utils as _fdu  # type: ignore
-        print('[STARTUP] frequency_db_utils.runtime_signature:', _fdu.runtime_signature())
-        if '.venv' not in (_sys.executable or '').lower():
-            print('[STARTUP] WARNING: app is not running from .venv:', _sys.executable)
-    except Exception as _sig_e:
-        print('[STARTUP] NOTE: could not read frequency_db_utils.runtime_signature:', _sig_e)
-except Exception as e:
-    try:
-        import sys
-        mytools_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mytools')
-        if os.path.isdir(mytools_dir) and mytools_dir not in sys.path:
-            sys.path.insert(0, mytools_dir)
-        add_word = _try_import_add_word()
-        HAS_MYTOOLS = True
-        print('[STARTUP] mytools helper available via ./mytools on sys.path: frequency_db_utils.word_adder.add_word')
-
-        # Runtime diagnostics: confirm exactly which copy of frequency_db_utils is imported.
-        try:
-            import sys as _sys
-            import frequency_db_utils as _fdu  # type: ignore
-            print('[STARTUP] frequency_db_utils.runtime_signature:', _fdu.runtime_signature())
-            if '.venv' not in (_sys.executable or '').lower():
-                print('[STARTUP] WARNING: app is not running from .venv:', _sys.executable)
-        except Exception as _sig_e:
-            print('[STARTUP] NOTE: could not read frequency_db_utils.runtime_signature:', _sig_e)
-    except Exception as e2:
-        print('[STARTUP] mytools helper not available:', e2)
-        HAS_MYTOOLS = False
-        add_word = None
 
 
 app = Flask(__name__,
@@ -396,7 +360,7 @@ def api_tts():
         return jsonify({'success': False, 'error': f'Internal error: {e}'}), 500
 
 def get_pg_conn():
-    db_url = os.environ.get('DATABASE_URL')
+    db_url = _resolve_database_url() or os.environ.get('DATABASE_URL')
     if not db_url:
         raise RuntimeError('DATABASE_URL not set in environment')
     try:
@@ -424,7 +388,7 @@ def api_db_health():
     """Endpoint público (sin autenticación) para comprobar si la app puede conectar a la base de datos.
     Devuelve JSON con {'ok': True} o {'ok': False, 'error': '...'} y enmascara la URL en la respuesta.
     """
-    db_url = os.environ.get('DATABASE_URL')
+    db_url = _resolve_database_url() or os.environ.get('DATABASE_URL')
     def mask_db_url(url):
         import re
         if not url:
@@ -474,139 +438,6 @@ def api_add_word():
         lang_row = cur.fetchone()
         language = lang_row[0] if lang_row and lang_row[0] else 'de'
         openai.api_key = os.environ.get('OPENAI_API_KEY')
-        # If the bundled helper is available, delegate the work to it.
-        if HAS_MYTOOLS and callable(add_word):
-            try:
-                # Print provenance BEFORE calling add_word so we can see which copy is running even if add_word crashes.
-                try:
-                    import sys as _sys
-                    import frequency_db_utils as _fdu  # type: ignore
-                    try:
-                        from frequency_db_utils import word_adder as _wa  # type: ignore
-                        _wa_file = getattr(_wa, '__file__', None)
-                    except Exception as _e:
-                        _wa_file = {'error': repr(_e)}
-
-                    _runtime_sig = None
-                    try:
-                        _runtime_sig = _fdu.runtime_signature()
-                    except Exception as _e:
-                        _runtime_sig = {'error': repr(_e)}
-
-                    print('[api_add_word] mytools sys.executable:', _sys.executable)
-                    print('[api_add_word] mytools frequency_db_utils.__file__:', getattr(_fdu, '__file__', None))
-                    print('[api_add_word] mytools word_adder.__file__:', _wa_file)
-                    print('[api_add_word] mytools runtime_signature:', _runtime_sig)
-                    try:
-                        print('[api_add_word] add_word.__module__:', getattr(add_word, '__module__', None))
-                    except Exception:
-                        pass
-                except Exception as _e:
-                    print('[api_add_word] NOTE: could not compute mytools provenance:', repr(_e))
-
-                print('[api_add_word] Delegating to frequency_db_utils.add_word')
-                result = add_word(
-                    conn,
-                    cur,
-                    palabra=word,
-                    list_id=active_list_id,
-                    language=language,
-                    openai_api_key=os.environ.get('OPENAI_API_KEY'),
-                    user_id=user_id,
-                )
-
-                runtime_sig = None
-                try:
-                    if isinstance(result, dict):
-                        runtime_sig = result.get('runtime_signature')
-                except Exception:
-                    runtime_sig = None
-                if not runtime_sig:
-                    try:
-                        import frequency_db_utils as _fdu  # type: ignore
-                        runtime_sig = _fdu.runtime_signature()
-                    except Exception as _e:
-                        runtime_sig = {'error': repr(_e)}
-                try:
-                    print('[api_add_word] freq_utils runtime_signature:', runtime_sig)
-                except Exception:
-                    pass
-
-                conn.commit()
-                cur.close(); conn.close()
-                return jsonify({
-                    'success': True,
-                    'word': word,
-                    'association': (result.get('association') if isinstance(result, dict) else None),
-                    'IPA_word': (result.get('ipa_word') if isinstance(result, dict) else None),
-                    'runtime_signature': runtime_sig,
-                }), 200
-            except Exception as e:
-                import traceback
-                print('[ERROR] api_add_word (mytools):', e)
-                traceback.print_exc()
-
-                # Diagnose common psycopg2 error: IndexError: tuple index out of range
-                # This usually means SQL placeholder count doesn't match params length.
-                try:
-                    from frequency_db_utils import word_adder as _wa  # type: ignore
-                    try:
-                        _actions = _wa.prepare_word_actions(
-                            palabra=word,
-                            list_id=active_list_id,
-                            language=language,
-                            openai_api_key=os.environ.get('OPENAI_API_KEY'),
-                            user_id=user_id,
-                        )
-                        _queries = _actions.get('queries', []) if isinstance(_actions, dict) else []
-                        for _i, _qp in enumerate(_queries):
-                            try:
-                                _sql, _params = _qp
-                            except Exception:
-                                print('[ERROR] api_add_word (mytools) bad query tuple at index', _i, ':', repr(_qp))
-                                continue
-
-                            _ph = 0
-                            try:
-                                _ph = int(str(_sql).count('%s'))
-                            except Exception:
-                                _ph = -1
-                            try:
-                                _plen = len(_params) if _params is not None else 0
-                            except Exception:
-                                _plen = -1
-
-                            if _ph >= 0 and _plen >= 0 and _ph != _plen:
-                                print('[ERROR] api_add_word (mytools) placeholder mismatch at query index', _i)
-                                print('[ERROR] api_add_word (mytools) placeholders=', _ph, 'params_len=', _plen)
-                                print('[ERROR] api_add_word (mytools) sql=', repr(_sql))
-                                print('[ERROR] api_add_word (mytools) params=', repr(_params))
-                                break
-                    except Exception as _diag_e:
-                        print('[ERROR] api_add_word (mytools) diag failed:', repr(_diag_e))
-                except Exception:
-                    pass
-
-                # Also print provenance on failure (in case it changed between startup and runtime).
-                try:
-                    import sys as _sys
-                    import frequency_db_utils as _fdu  # type: ignore
-                    try:
-                        from frequency_db_utils import word_adder as _wa  # type: ignore
-                        _wa_file = getattr(_wa, '__file__', None)
-                    except Exception as _e:
-                        _wa_file = {'error': repr(_e)}
-                    try:
-                        _runtime_sig = _fdu.runtime_signature()
-                    except Exception as _e:
-                        _runtime_sig = {'error': repr(_e)}
-                    print('[ERROR] api_add_word (mytools) sys.executable:', _sys.executable)
-                    print('[ERROR] api_add_word (mytools) frequency_db_utils.__file__:', getattr(_fdu, '__file__', None))
-                    print('[ERROR] api_add_word (mytools) word_adder.__file__:', _wa_file)
-                    print('[ERROR] api_add_word (mytools) runtime_signature:', _runtime_sig)
-                except Exception:
-                    pass
-                # Fall through to the original implementation as a fallback
         # Traducción directa al español (máx 3 palabras) — indicar idioma origen (language de la lista activa)
         # Mapear códigos de idioma simples a nombres en español para que el prompt sea claro
         lang_code = (language or 'de').lower()
