@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "LightApp: Update mytools",
+      "label": "LightApp: Activate venv",
       "type": "shell",
       "command": "powershell",
       "args": [
@@ -10,20 +10,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\update_mytools.ps1"
-      ],
-      "problemMatcher": []
-    },
-    {
-      "label": "LightApp: Run (venv)",
-      "type": "shell",
-      "command": "powershell",
-      "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "${workspaceFolder}\\run_lightapp.ps1"
+        "${workspaceFolder}\\activate_venv.ps1"
       ],
       "problemMatcher": [],
       "group": {
