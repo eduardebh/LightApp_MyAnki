@@ -31,7 +31,11 @@ from flask import Flask, render_template, request, redirect, url_for, session as
 from dotenv import load_dotenv
 import psycopg2
 from werkzeug.security import check_password_hash, generate_password_hash
-import openai
+openai = None
+try:
+    import openai
+except Exception as e:
+    print('[STARTUP] Warning: OpenAI SDK unavailable:', e)
 # Guarded import: some deploys may fail to install Flask-Cors; avoid crashing the app.
 HAS_FLASK_CORS = False
 try:
@@ -432,6 +436,8 @@ def api_add_word():
     user_id = flask_session.get('user_id')
     if not user_id:
         return jsonify({'success': False, 'error': 'Not logged in'}), 401
+    if openai is None:
+        return jsonify({'success': False, 'error': 'OpenAI is unavailable. Reinstall dependencies to add words.'}), 503
     data = request.get_json()
     word = data.get('word', '').strip()
     if not word:
