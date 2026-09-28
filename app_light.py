@@ -62,9 +62,11 @@ def _resolve_database_url():
         os.environ.get('SUPABASE_PROJECT_REF')
         or project_url.rstrip('/').split('://', 1)[-1].replace('.supabase.co', '')
     )
-    host = os.environ.get('SUPABASE_DB_HOST') or 'aws-0-eu-central-1.pooler.supabase.com'
-    port = os.environ.get('SUPABASE_DB_PORT') or '6543'
-    user = os.environ.get('SUPABASE_DB_USERNAME') or f'postgres.{project_ref}'
+    # Prefer direct DB host by default to avoid pooler auth/user mismatches.
+    # If needed, these values can still be overridden via env vars.
+    host = os.environ.get('SUPABASE_DB_HOST') or f'db.{project_ref}.supabase.co'
+    port = os.environ.get('SUPABASE_DB_PORT') or '5432'
+    user = os.environ.get('SUPABASE_DB_USERNAME') or 'postgres'
     password = (
         os.environ.get('SUPABASE_DB_PASSWORD')
         or os.environ.get('DB_PASSWORD')
