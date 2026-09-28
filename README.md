@@ -35,6 +35,6 @@ La app levanta por defecto en `http://127.0.0.1:5000`.
 ## Produccion (gunicorn)
 
 ```bash
-gunicorn -w 2 -b 0.0.0.0:$PORT LightApp.app_light:app
+gunicorn -w 2 -b 0.0.0.0:$PORT app_light:app
 ```
 
