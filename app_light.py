@@ -348,12 +348,18 @@ def api_tts():
             print('[TTS] Google Cloud TTS: No audioContent in response')
             return jsonify({'success': False, 'error': 'No audio content'}), 502
     except Exception as e:
-        # Common local failure: missing ADC credentials.
+        # Treat expected cloud-config failures as graceful fallback so the UI can keep working.
         msg = str(e) if e is not None else ''
-        if 'default credentials were not found' in msg.lower():
-            # Return 200 so the frontend can seamlessly fallback to SpeechSynthesis.
-            print('[TTS] Google Cloud credentials missing; falling back to browser TTS')
-            return jsonify({'success': False, 'error': 'Google Cloud credentials missing'}), 200
+        msg_low = msg.lower()
+        fallback_markers = (
+            'default credentials were not found',
+            'billing_disabled',
+            'requires billing to be enabled',
+            'permission_denied',
+        )
+        if any(marker in msg_low for marker in fallback_markers):
+            print('[TTS] Google Cloud unavailable; falling back to browser TTS')
+            return jsonify({'success': False, 'error': f'Google Cloud TTS unavailable: {msg}'}), 200
         import traceback
         print(f'[TTS] Exception: {e}')
         traceback.print_exc()
