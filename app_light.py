@@ -47,6 +47,37 @@ except Exception as e:
 
 load_dotenv()
 
+
+def _resolve_database_url():
+    """Resolve DATABASE_URL from env or from the new Supabase project URL."""
+    db_url = os.environ.get('DATABASE_URL') or os.environ.get('SUPABASE_DATABASE_URL')
+    if db_url:
+        return db_url
+
+    project_url = os.environ.get('SUPABASE_PROJECT_URL') or os.environ.get('SUPABASE_URL')
+    if not project_url:
+        return None
+
+    project_ref = (
+        os.environ.get('SUPABASE_PROJECT_REF')
+        or project_url.rstrip('/').split('://', 1)[-1].replace('.supabase.co', '')
+    )
+    host = os.environ.get('SUPABASE_DB_HOST') or 'aws-0-eu-central-1.pooler.supabase.com'
+    port = os.environ.get('SUPABASE_DB_PORT') or '6543'
+    user = os.environ.get('SUPABASE_DB_USERNAME') or f'postgres.{project_ref}'
+    password = (
+        os.environ.get('SUPABASE_DB_PASSWORD')
+        or os.environ.get('DB_PASSWORD')
+        or os.environ.get('SUPABASE_PASSWORD')
+    )
+    if not password:
+        return None
+
+    db_url = f"postgresql://{user}:{password}@{host}:{port}/postgres?sslmode=require"
+    os.environ['DATABASE_URL'] = db_url
+    return db_url
+
+
 # Optional integration with external helper repo 'mytools' (added as submodule)
 # Preferred path: installed package `frequency_db_utils` (e.g., via `pip install -e ./mytools`).
 # Fallback: if running from a source checkout without installation, temporarily add `./mytools` to sys.path.
@@ -396,7 +427,7 @@ def api_tts():
         return jsonify({'success': False, 'error': f'Internal error: {e}'}), 500
 
 def get_pg_conn():
-    db_url = os.environ.get('DATABASE_URL')
+    db_url = _resolve_database_url() or os.environ.get('DATABASE_URL')
     if not db_url:
         raise RuntimeError('DATABASE_URL not set in environment')
     try:
@@ -424,7 +455,7 @@ def api_db_health():
     """Endpoint público (sin autenticación) para comprobar si la app puede conectar a la base de datos.
     Devuelve JSON con {'ok': True} o {'ok': False, 'error': '...'} y enmascara la URL en la respuesta.
     """
-    db_url = os.environ.get('DATABASE_URL')
+    db_url = _resolve_database_url() or os.environ.get('DATABASE_URL')
     def mask_db_url(url):
         import re
         if not url:
