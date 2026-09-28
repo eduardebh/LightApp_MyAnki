@@ -3,5 +3,5 @@ services:
     name: lightapp
     env: python
     plan: free
-    buildCommand: git submodule update --init --recursive && pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt
     startCommand: gunicorn -w 2 -b 0.0.0.0:$PORT app_light:app
