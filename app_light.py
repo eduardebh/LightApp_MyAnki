@@ -62,11 +62,11 @@ def _resolve_database_url():
         os.environ.get('SUPABASE_PROJECT_REF')
         or project_url.rstrip('/').split('://', 1)[-1].replace('.supabase.co', '')
     )
-    # Prefer direct DB host by default to avoid pooler auth/user mismatches.
-    # If needed, these values can still be overridden via env vars.
-    host = os.environ.get('SUPABASE_DB_HOST') or f'db.{project_ref}.supabase.co'
-    port = os.environ.get('SUPABASE_DB_PORT') or '5432'
-    user = os.environ.get('SUPABASE_DB_USERNAME') or 'postgres'
+    # Use the Supabase pooler by default. It works on IPv4-only networks where
+    # the direct database host may resolve only to unreachable IPv6 addresses.
+    host = os.environ.get('SUPABASE_DB_HOST') or 'aws-0-eu-central-1.pooler.supabase.com'
+    port = os.environ.get('SUPABASE_DB_PORT') or '6543'
+    user = os.environ.get('SUPABASE_DB_USERNAME') or f'postgres.{project_ref}'
     password = (
         os.environ.get('SUPABASE_DB_PASSWORD')
         or os.environ.get('DB_PASSWORD')
@@ -926,7 +926,7 @@ def random_word():
         if row:
             active_list = {'id': row[0], 'name': row[1], 'language': row[2]}
 
-        cur.execute('SELECT id, word, counter_word, IPA_word FROM words WHERE list_id = %s AND added = TRUE', (active_list_id,))
+        cur.execute('SELECT id, word, counter_word, "IPA_word" FROM words WHERE list_id = %s AND added = TRUE', (active_list_id,))
         words = cur.fetchall()
         if not words:
             cur.close(); conn.close()
