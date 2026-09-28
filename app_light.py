@@ -250,6 +250,11 @@ def api_tts():
     ipa = (data.get('ipa') or '').strip() if isinstance(data, dict) else ''
     if not text:
         return jsonify({'success': False, 'error': 'No text provided'}), 400
+    # Keep local dev resilient: disable cloud TTS by default and use browser fallback.
+    # Set DISABLE_GOOGLE_TTS=0 only when you explicitly want to call Google TTS.
+    disable_google_tts = os.environ.get('DISABLE_GOOGLE_TTS', '1').lower() in ('1', 'true', 'yes', 'on')
+    if disable_google_tts:
+        return jsonify({'success': False, 'error': 'Google Cloud TTS disabled'}), 200
     if texttospeech is None:
         return jsonify({'success': False, 'error': 'google-cloud-texttospeech not installed'}), 200
     try:
