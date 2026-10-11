@@ -18,8 +18,6 @@ try:
             print('[STARTUP] Using local Google credentials file: google-credentials.json')
 except Exception as _e:
     print('[STARTUP] Warning: could not set local Google credentials file:', _e)
-import base64
-import requests
 texttospeech = None
 try:
     from google.cloud import texttospeech  # type: ignore
@@ -82,9 +80,6 @@ def _resolve_database_url():
     db_url = f"postgresql://{user}:{password}@{host}:{port}/postgres?sslmode=require"
     os.environ['DATABASE_URL'] = db_url
     return db_url
-
-
-HAS_MYTOOLS = False
 
 
 app = Flask(__name__,
@@ -188,29 +183,6 @@ def log_request_info():
             print(f"[REQ-OPTIONS] headers={list(hdrs.keys())}")
     except Exception as e:
         print('[REQ] logging exception:', e)
-
-
-@app.route('/api/runtime_signature', methods=['GET'])
-def api_runtime_signature():
-    """Return runtime info to verify which mytools/frequency_db_utils is being used."""
-    import sys
-    import os
-    sig = None
-    err = None
-    try:
-        import frequency_db_utils as fdu  # type: ignore
-        sig = fdu.runtime_signature()
-    except Exception as e:
-        err = repr(e)
-
-    return jsonify({
-        'success': sig is not None,
-        'signature': sig,
-        'error': err,
-        'sys_executable': sys.executable,
-        'cwd': os.getcwd(),
-    })
-
 
 
 @app.route('/api/tts', methods=['POST'])
