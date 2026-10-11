@@ -37,4 +37,5 @@ La app levanta por defecto en `http://127.0.0.1:5000`.
 ```bash
 gunicorn -w 2 -b 0.0.0.0:$PORT app_light:app
 ```
+. ./.venv/Scripts/Activate.ps1
 
