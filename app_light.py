@@ -297,21 +297,51 @@ def api_tts():
             # Best-effort detection: Google returns InvalidArgument when a voice name is not supported.
             return ('invalid argument' in msg) or ('invalidargument' in msg) or ('voice' in msg and 'not' in msg)
 
-        # Selección aleatoria de voz (con fallback robusto si Neural2 no está habilitado en el proyecto)
-        if language.startswith('fr') or language.startswith('de'):
-            if language.startswith('fr'):
-                lang_code = 'fr-FR'
-                voice_candidates = [
-                    'fr-FR-Neural2-D', 'fr-FR-Neural2-E',
-                    'fr-FR-Standard-A', 'fr-FR-Standard-B', 'fr-FR-Standard-C', 'fr-FR-Standard-D', 'fr-FR-Standard-E'
-                ]
-            else:
-                lang_code = 'de-DE'
-                voice_candidates = [
-                    'de-DE-Neural2-A', 'de-DE-Neural2-B', 'de-DE-Neural2-C', 'de-DE-Neural2-D',
-                    'de-DE-Standard-A', 'de-DE-Standard-B', 'de-DE-Standard-C', 'de-DE-Standard-D'
-                ]
+        # Selección aleatoria de voz por idioma con fallback robusto para proyectos sin Neural2.
+        voice_candidates_by_lang = {
+            'fr-FR': [
+                'fr-FR-Neural2-D', 'fr-FR-Neural2-E',
+                'fr-FR-Standard-A', 'fr-FR-Standard-B', 'fr-FR-Standard-C', 'fr-FR-Standard-D', 'fr-FR-Standard-E'
+            ],
+            'de-DE': [
+                'de-DE-Neural2-A', 'de-DE-Neural2-B', 'de-DE-Neural2-C', 'de-DE-Neural2-D',
+                'de-DE-Standard-A', 'de-DE-Standard-B', 'de-DE-Standard-C', 'de-DE-Standard-D'
+            ],
+            'en-US': [
+                'en-US-Neural2-A', 'en-US-Neural2-B', 'en-US-Neural2-C', 'en-US-Neural2-D',
+                'en-US-Standard-A', 'en-US-Standard-B', 'en-US-Standard-C', 'en-US-Standard-D'
+            ],
+            'es-ES': [
+                'es-ES-Neural2-A', 'es-ES-Neural2-B', 'es-ES-Neural2-C',
+                'es-ES-Standard-A', 'es-ES-Standard-B', 'es-ES-Standard-C'
+            ],
+            'it-IT': [
+                'it-IT-Neural2-A', 'it-IT-Neural2-B', 'it-IT-Neural2-C',
+                'it-IT-Standard-A', 'it-IT-Standard-B', 'it-IT-Standard-C'
+            ],
+            'pt-BR': [
+                'pt-BR-Neural2-A', 'pt-BR-Neural2-B', 'pt-BR-Neural2-C',
+                'pt-BR-Standard-A', 'pt-BR-Standard-B', 'pt-BR-Standard-C'
+            ],
+        }
 
+        lang_code = language
+        if language.startswith('fr'):
+            lang_code = 'fr-FR'
+        elif language.startswith('de'):
+            lang_code = 'de-DE'
+        elif language.startswith('en'):
+            lang_code = 'en-US'
+        elif language.startswith('es'):
+            lang_code = 'es-ES'
+        elif language.startswith('it'):
+            lang_code = 'it-IT'
+        elif language.startswith('pt'):
+            lang_code = 'pt-BR'
+
+        voice_candidates = voice_candidates_by_lang.get(lang_code, [])
+
+        if voice_candidates:
             random.shuffle(voice_candidates)
             last_voice_err: Exception | None = None
             response = None
@@ -327,7 +357,6 @@ def api_tts():
                     if response and getattr(response, 'audio_content', None):
                         break
                 except Exception as e:
-                    # If the specific voice isn't available, try the next candidate.
                     if _is_voice_not_available_error(e):
                         last_voice_err = e
                         continue
