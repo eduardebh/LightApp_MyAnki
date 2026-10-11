@@ -543,6 +543,12 @@
         </div>
     {% endif %}
 
+    {% if session.get('user_id') or user_id or username %}
+        <a href="/logout" aria-label="Logout" title="Logout" style="position:fixed;top:18px;right:18px;z-index:1200;padding:10px 14px;border-radius:10px;border:1px solid #374151;background:#1f2937;color:#f3f4f6;text-decoration:none;font-weight:bold;cursor:pointer;box-shadow:0 2px 8px #0004;">
+            Logout
+        </a>
+    {% endif %}
+
     <!-- Meta para JS: language de la lista activa -->
     <div id="active-list-meta" data-language="{% if active_list and active_list.language %}{{ active_list.language }}{% endif %}" style="display:none;"></div>
     {% if session.get('user_id') or user_id or username %}
@@ -609,7 +615,10 @@
                         </table>
                     </div>
                 </div>
-        <button id="start-btn" class="mobile-btn" title="Start (Espacio)" aria-label="Start" aria-keyshortcuts="Space" style="font-size:1.3em;padding:18px 40px;margin:0 auto;text-decoration:none;">Start</button>
+        <div style="display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap; margin-top:16px;">
+            <button id="replay-word-btn" type="button" title="Reproducir palabra" aria-label="Reproducir palabra" style="display:none; width:48px; height:48px; border:none; border-radius:50%; background:#38bdf8; color:#08111f; font-weight:bold; cursor:pointer; box-shadow:0 2px 8px #0002; font-size:1.35em; line-height:1; padding:0;">🔊</button>
+            <button id="start-btn" class="mobile-btn" title="Start (Espacio)" aria-label="Start" aria-keyshortcuts="Space" style="font-size:1.3em;padding:18px 40px;margin:0 auto;text-decoration:none;">Start</button>
+        </div>
         <div id="ipa-word-container" style="margin-top:40px;"></div>
     </div>
     <script>
@@ -975,53 +984,41 @@
         }
     }
 
-    // --- Inicia reproducción controlada con auto-advance después de 4 reproducciones ---
+    // --- Reproducción única, sin repeticiones automáticas ---
+    function setCurrentPlaybackState(word, lang, ipaPhoneme=null) {
+        window._currentWordSpeechState = {
+            word: word || null,
+            lang: lang || 'de',
+            ipa: ipaPhoneme || null,
+        };
+        const replayBtn = document.getElementById('replay-word-btn');
+        if (replayBtn) {
+            replayBtn.style.display = window._currentWordSpeechState.word ? 'inline-block' : 'none';
+            replayBtn.disabled = !window._currentWordSpeechState.word;
+        }
+    }
+
+    async function replayCurrentWord() {
+        const state = window._currentWordSpeechState || {};
+        const word = state.word;
+        const lang = state.lang || 'de';
+        const ipa = state.ipa || null;
+        if (!word) return;
+        try {
+            if (window.speechSynthesis) window.speechSynthesis.cancel();
+            await ensureVoicesLoaded();
+            const forceGoogleFirst = !!(ipa && (lang || '').toString().toLowerCase().startsWith('fr'));
+            await playTTS(word, lang, null, { ipa, forceGoogleFirst });
+        } catch (e) {
+            console.error('replayCurrentWord error', e);
+        }
+    }
+
     function startAutoAdvanceForWord(word, lang, ipaPhoneme=null) {
         try {
-            window._skipIpaRepeatDuringAutoAdvance = true;
-            // Crear token cancelable para esta secuencia de auto-advance
-            const myToken = (window._autoAdvanceToken = (window._autoAdvanceToken || 0) + 1);
-            try { console.debug('[AutoAdvance] start', {token: myToken, word: word, lang: lang}); } catch(e){}
-            let ttsRepeatCount = 0;
-            const ttsEndHandler = function() {
-                try {
-                    // Si la secuencia fue cancelada externamente, ignorar
-                    if (window._autoAdvanceToken !== myToken) {
-                        try { console.debug('[AutoAdvance] canceled (token mismatch)', {expected: myToken, current: window._autoAdvanceToken}); } catch(e){}
-                        return;
-                    }
-                    ttsRepeatCount++;
-                    try { console.debug('[AutoAdvance] ttsEndHandler', {token: myToken, count: ttsRepeatCount}); } catch(e){}
-                    if (ttsRepeatCount < 4) {
-                        setTimeout(() => {
-                            if (window._autoAdvanceToken !== myToken) {
-                                try { console.debug('[AutoAdvance] canceled before retry', {token: myToken}); } catch(e){}
-                                return;
-                            }
-                            try { console.debug('[AutoAdvance] replaying', {token: myToken, nextCount: ttsRepeatCount+1}); } catch(e){}
-                            const forceGoogleFirst = !!(ipaPhoneme && (lang || '').toString().toLowerCase().startsWith('fr'));
-                            playTTS(word, lang, ttsEndHandler, { ipa: ipaPhoneme, forceGoogleFirst });
-                        }, 5000);
-                    } else {
-                        setTimeout(() => {
-                            try {
-                                if (window._autoAdvanceToken !== myToken) {
-                                    try { console.debug('[AutoAdvance] canceled before final advance', {token: myToken}); } catch(e){}
-                                    return;
-                                }
-                                window._skipNextUpdate = true;
-                                try { console.debug('[AutoAdvance] will programmatic click right (skip update)', {token: myToken}); } catch(e){}
-                                const rightBtn = document.getElementById('arrow-right');
-                                if (rightBtn) rightBtn.click();
-                            } catch(e) { console.error('Auto-advance error', e); }
-                        }, 4000);
-                        window._skipIpaRepeatDuringAutoAdvance = false;
-                    }
-                } catch(e) { console.error('ttsEndHandler error', e); }
-            };
-            // Primera reproducción (cancelable)
+            setCurrentPlaybackState(word, lang, ipaPhoneme);
             const forceGoogleFirst = !!(ipaPhoneme && (lang || '').toString().toLowerCase().startsWith('fr'));
-            playTTS(word, lang, ttsEndHandler, { ipa: ipaPhoneme, forceGoogleFirst });
+            playTTS(word, lang, null, { ipa: ipaPhoneme, forceGoogleFirst });
         } catch(e) {
             console.error('startAutoAdvanceForWord error', e);
         }
@@ -1054,18 +1051,10 @@
     }
 
     function startIPARepeat(wordText, ipaPhoneme, lang, firstDelay=0, onEnd=null) {
-        // Clear any previous starter timeout or interval
+        // No automatic replays; the user can press the explicit replay button whenever they want.
         try { if (ipaRepeatStarter) { clearTimeout(ipaRepeatStarter); ipaRepeatStarter = null; } } catch(e){}
         try { if (ipaRepeatInterval) { clearInterval(ipaRepeatInterval); ipaRepeatInterval = null; } } catch(e){}
-        // Schedule the first background IPA play 5s after firstDelay, then every 5s
-        ipaRepeatStarter = setTimeout(function() {
-            try {
-                if (!window._skipIpaRepeatDuringAutoAdvance) speakIPA(wordText, ipaPhoneme, lang, onEnd);
-            } catch(e){}
-            ipaRepeatInterval = setInterval(function() {
-                try { if (!window._skipIpaRepeatDuringAutoAdvance) speakIPA(wordText, ipaPhoneme, lang, onEnd); } catch(e){}
-            }, 5000);
-        }, firstDelay + 5000);
+        return;
     }
 
     document.addEventListener('DOMContentLoaded', function() {
@@ -1178,9 +1167,22 @@
             }
         });
         var startBtn = document.getElementById('start-btn');
+        var replayBtn = document.getElementById('replay-word-btn');
+        if (replayBtn) {
+            replayBtn.addEventListener('click', function() {
+                replayCurrentWord();
+            });
+        }
+        function setReplayButtonVisibility(visible) {
+            if (!replayBtn) return;
+            replayBtn.style.display = visible ? 'inline-flex' : 'none';
+            replayBtn.style.alignItems = 'center';
+            replayBtn.style.justifyContent = 'center';
+        }
         if (startBtn) {
             startBtn.addEventListener('click', function(e) {
                 e.preventDefault();
+                setReplayButtonVisibility(true);
                 startBtn.style.display = 'none';
                 setTimeout(function() {
                     fetch('/api/random_word').then(resp => resp.json()).then(async data => {
@@ -1325,7 +1327,8 @@
                             if (window.speechSynthesis) window.speechSynthesis.cancel();
                             // Espera a que las voces estén listas antes de hablar la primera vez
                             await ensureVoicesLoaded();
-                            // Iniciar auto-advance cancelable y el loop IPA
+                            // Reproducción única por palabra; el usuario puede repetirla con el botón manual
+                            setCurrentPlaybackState(data.word, data.language || 'de', data.ipa_word || null);
                             startAutoAdvanceForWord(data.word, data.language || 'de', data.ipa_word || null);
                             startIPARepeat(data.word, data.ipa_word || null, data.language || 'de');
                             // Lógica para flechas
@@ -1479,6 +1482,7 @@
                                                             // if (window.speechSynthesis) window.speechSynthesis.cancel();
                                                             try { if (ipaRepeatStarter) { clearTimeout(ipaRepeatStarter); ipaRepeatStarter = null; } if (typeof ipaRepeatInterval !== 'undefined' && ipaRepeatInterval) { clearInterval(ipaRepeatInterval); ipaRepeatInterval = null; } } catch(e){}
                                                             cont.innerHTML = '';
+                                                            setReplayButtonVisibility(false);
                                                             const startBtn = document.getElementById('start-btn');
                                                             if (startBtn) startBtn.style.display = '';
                                                             _setCurrentWordForDelete(null, null);
@@ -1589,6 +1593,7 @@
                                                                 if (window.speechSynthesis) window.speechSynthesis.cancel();
                                                                 try { if (ipaRepeatStarter) { clearTimeout(ipaRepeatStarter); ipaRepeatStarter = null; } if (typeof ipaRepeatInterval !== 'undefined' && ipaRepeatInterval) { clearInterval(ipaRepeatInterval); ipaRepeatInterval = null; } } catch(e){}
                                                                 cont.innerHTML = '';
+                                                                setReplayButtonVisibility(false);
                                                                 const startBtn = document.getElementById('start-btn');
                                                                 if (startBtn) startBtn.style.display = '';
                                                                 _setCurrentWordForDelete(null, null);
@@ -1720,6 +1725,7 @@
                                                             if (window.speechSynthesis) window.speechSynthesis.cancel();
                                                             try { if (ipaRepeatStarter) { clearTimeout(ipaRepeatStarter); ipaRepeatStarter = null; } if (typeof ipaRepeatInterval !== 'undefined' && ipaRepeatInterval) { clearInterval(ipaRepeatInterval); ipaRepeatInterval = null; } } catch(e){}
                                                             cont.innerHTML = '';
+                                                            setReplayButtonVisibility(false);
                                                             const startBtn = document.getElementById('start-btn');
                                                             if (startBtn) startBtn.style.display = '';
                                                         };
