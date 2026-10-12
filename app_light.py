@@ -431,121 +431,42 @@ def api_db_health():
         traceback.print_exc()
         return jsonify({'ok': False, 'error': str(e), 'db': mask_db_url(db_url)}), 500
 
-# Endpoint para agregar una palabra a la lista activa, traducir al alemán y obtener IPA usando OpenAI
+# Endpoint para agregar una palabra a la lista activa
 @app.route('/api/add_word', methods=['POST'])
 def api_add_word():
     user_id = flask_session.get('user_id')
     if not user_id:
         return jsonify({'success': False, 'error': 'Not logged in'}), 401
-    if openai is None:
-        return jsonify({'success': False, 'error': 'OpenAI is unavailable. Reinstall dependencies to add words.'}), 503
-    data = request.get_json()
-    word = data.get('word', '').strip()
+    data = request.get_json(silent=True) or {}
+    word = data.get('word', '')
+    word = word.strip() if isinstance(word, str) else ''
     if not word:
         return jsonify({'success': False, 'error': 'No word provided'}), 400
     try:
         conn = get_pg_conn()
         cur = conn.cursor()
         # Obtener lista activa
-        cur.execute('SELECT last_list FROM users WHERE id = %s', (user_id,))
+        cur.execute(
+            'SELECT wl.id FROM users u '
+            'JOIN word_lists wl ON wl.id = u.last_list AND wl.user_id = u.id '
+            'WHERE u.id = %s',
+            (user_id,),
+        )
         row = cur.fetchone()
         if not row or not row[0]:
             cur.close(); conn.close()
             return jsonify({'success': False, 'error': 'No active list'}), 400
         active_list_id = row[0]
-        # Obtener el idioma de la lista activa
-        cur.execute('SELECT language FROM word_lists WHERE id = %s', (active_list_id,))
-        lang_row = cur.fetchone()
-        language = lang_row[0] if lang_row and lang_row[0] else 'de'
-        openai.api_key = os.environ.get('OPENAI_API_KEY')
-        # Traducción directa al español (máx 3 palabras) — indicar idioma origen (language de la lista activa)
-        # Mapear códigos de idioma simples a nombres en español para que el prompt sea claro
-        lang_code = (language or 'de').lower()
-        lang_map = {
-            'de': 'alemán', 'de-de': 'alemán',
-            'fr': 'francés', 'fr-fr': 'francés',
-            'en': 'inglés', 'en-us': 'inglés', 'en-gb': 'inglés',
-            'es': 'español', 'es-es': 'español',
-            'it': 'italiano', 'pt': 'portugués'
-        }
-        lang_name = lang_map.get(lang_code, language)
-        prompt_translation = (
-            f"Traduce la siguiente palabra del idioma {lang_name} al español. Responde SOLO en UNA LÍNEA y usa EXACTAMENTE este formato:\n"
-            f"- Si es un sustantivo: '<artículo_original> <palabra>, <traducción_en_español>' (ejemplo: 'die Frau, la mujer')\n"
-            f"- Si es un verbo conjugado: '<pronombre> <forma_conjugada>, <traducción_en_español>' (ejemplo: 'ich gehe, yo voy')\n"
-            f"IMPORTANTE: Mantén EXACTAMENTE el artículo o el pronombre y la forma en el IDIOMA ORIGINAL en la PARTE IZQUIERDA antes de la coma. NO traduzcas esa parte. Traduce SOLO la parte después de la coma al español.\n"
-            f"Si no aplica artículo o pronombre, escribe solo '<palabra>, <traducción>'. NO añadas explicaciones, etiquetas ni otros textos.\n"
-            f"RESPUESTA de ejemplo correcta (no traduzcas la parte izquierda): 'ich gehe, yo voy'\n"
-            f"RESPUESTA de ejemplo INCORRECTA (evitar): 'yo voy, yo voy'\n"
-            f"Palabra: {word}"
-        )
-        response_tr = openai.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant for language learning."},
-                {"role": "user", "content": prompt_translation}
-            ],
-            max_tokens=30,
-            temperature=0.3
-        )
-        # Limpiar traducción: tomar la primera línea y mantener el formato 'X, traducción'
-        raw_translation = response_tr.choices[0].message.content.strip()
-        # Quitar prefijos comunes y texto antes de ':' si existen
-        prefixes = ["translation", "traducción", f"{lang_name.lower()}:", f"{lang_code}:"]
-        cleaned = raw_translation.strip()
-        cleaned_lower = cleaned.lower()
-        for prefix in prefixes:
-            if cleaned_lower.startswith(prefix):
-                cleaned = cleaned[len(prefix):].strip()
-                cleaned_lower = cleaned.lower()
-        if ':' in cleaned:
-            cleaned = cleaned.split(':', 1)[1].strip()
-        # Tomar solo la primera línea
-        first_line = cleaned.split('\n')[0].strip()
-        # Normalizar espacios
-        association = ' '.join(first_line.split())
-        # Guardamos la asociación completa (ej. 'der Haus, casa' o 'ich gehe, yo voy')
-        translation = association
-
-        # Obtener el IPA de la palabra original en el idioma de la lista activa
-        prompt_ipa = f"Provide the IPA transcription for the following word in {language}:\nWord: {word}\nFormat: <IPA>"
-        response_ipa = openai.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant for language learning."},
-                {"role": "user", "content": prompt_ipa}
-            ],
-            max_tokens=30,
-            temperature=0.3
-        )
-        # Limpiar IPA: quitar frases de relleno y dejar solo el IPA
-        raw_ipa = response_ipa.choices[0].message.content.strip()
-        # Buscar el primer bloque entre /.../ o [...] o después de ':'
-        import re
-        ipa_match = re.search(r'([/\[].*?[/\]])', raw_ipa)
-        if ipa_match:
-            ipa = ipa_match.group(1)
-        else:
-            # Si no hay /.../ o [...], tomar después de ':' o la primera palabra
-            if ':' in raw_ipa:
-                ipa = raw_ipa.split(':',1)[1].strip().split()[0]
-            else:
-                ipa = raw_ipa.split()[0]
-        # Insertar palabra en la base de datos
         cur.execute('''
-            INSERT INTO words (word, association, "IPA_word", list_id, added, counter_word, used, state, successes)
-            VALUES (%s, %s, %s, %s, TRUE, 0, FALSE, 'New', 0)
+            INSERT INTO words (word, association, "IPA_word", list_id, added, counter_word)
+            VALUES (%s, '', '', %s, TRUE, 0)
             ON CONFLICT (word, list_id) DO UPDATE SET
-                association=EXCLUDED.association,
-                "IPA_word"=EXCLUDED."IPA_word",
                 added=TRUE,
-                used=EXCLUDED.used,
-                state=EXCLUDED.state,
-                successes=EXCLUDED.successes
-        ''', (word, translation, ipa, active_list_id))
+                counter_word=0
+        ''', (word, active_list_id))
         conn.commit()
         cur.close(); conn.close()
-        return jsonify({'success': True, 'word': word, 'association': translation, 'IPA_word': ipa})
+        return jsonify({'success': True, 'word': word, 'association': '', 'IPA_word': ''})
     except Exception as e:
         print('[ERROR] api_add_word:', e)
         return jsonify({'success': False, 'error': 'Internal error'}), 500

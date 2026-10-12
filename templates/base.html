@@ -993,7 +993,9 @@
         };
         const replayBtn = document.getElementById('replay-word-btn');
         if (replayBtn) {
-            replayBtn.style.display = window._currentWordSpeechState.word ? 'inline-block' : 'none';
+            const startBtn = document.getElementById('start-btn');
+            const sessionActive = startBtn && window.getComputedStyle(startBtn).display === 'none';
+            replayBtn.style.display = window._currentWordSpeechState.word && sessionActive ? 'inline-flex' : 'none';
             replayBtn.disabled = !window._currentWordSpeechState.word;
         }
     }
@@ -1015,13 +1017,7 @@
     }
 
     function startAutoAdvanceForWord(word, lang, ipaPhoneme=null) {
-        try {
-            setCurrentPlaybackState(word, lang, ipaPhoneme);
-            const forceGoogleFirst = !!(ipaPhoneme && (lang || '').toString().toLowerCase().startsWith('fr'));
-            playTTS(word, lang, null, { ipa: ipaPhoneme, forceGoogleFirst });
-        } catch(e) {
-            console.error('startAutoAdvanceForWord error', e);
-        }
+        setCurrentPlaybackState(word, lang, ipaPhoneme);
     }
 
     let ipaRepeatInterval = null;
@@ -1696,6 +1692,7 @@
                                                                     if (window.speechSynthesis) window.speechSynthesis.cancel();
                                                                     try { if (ipaRepeatStarter) { clearTimeout(ipaRepeatStarter); ipaRepeatStarter = null; } if (typeof ipaRepeatInterval !== 'undefined' && ipaRepeatInterval) { clearInterval(ipaRepeatInterval); ipaRepeatInterval = null; } } catch(e){}
                                                                     cont.innerHTML = '';
+                                                                    setReplayButtonVisibility(false);
                                                                     const startBtn = document.getElementById('start-btn');
                                                                     if (startBtn) startBtn.style.display = '';
                                                                     _setCurrentWordForDelete(null, null);
