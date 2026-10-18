@@ -185,6 +185,16 @@ def log_request_info():
         print('[REQ] logging exception:', e)
 
 
+_LAST_TTS_VOICE = {}
+
+
+@app.route('/favicon.ico')
+def favicon():
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="#23272f"/>'
+           '<text x="32" y="43" font-size="34" text-anchor="middle" fill="#fde047">A</text></svg>')
+    return app.response_class(svg, mimetype='image/svg+xml')
+
+
 @app.route('/api/tts', methods=['POST'])
 def api_tts():
     data = request.get_json()
@@ -272,11 +282,13 @@ def api_tts():
         # Selección aleatoria de voz por idioma con fallback robusto para proyectos sin Neural2.
         voice_candidates_by_lang = {
             'fr-FR': [
-                'fr-FR-Neural2-D', 'fr-FR-Neural2-E',
+                'fr-FR-Neural2-A', 'fr-FR-Neural2-B', 'fr-FR-Neural2-C', 'fr-FR-Neural2-D',
+                'fr-FR-Neural2-E', 'fr-FR-Neural2-F', 'fr-FR-Neural2-G',
                 'fr-FR-Standard-A', 'fr-FR-Standard-B', 'fr-FR-Standard-C', 'fr-FR-Standard-D', 'fr-FR-Standard-E'
             ],
             'de-DE': [
                 'de-DE-Neural2-A', 'de-DE-Neural2-B', 'de-DE-Neural2-C', 'de-DE-Neural2-D',
+                'de-DE-Neural2-F', 'de-DE-Neural2-G', 'de-DE-Neural2-H',
                 'de-DE-Standard-A', 'de-DE-Standard-B', 'de-DE-Standard-C', 'de-DE-Standard-D'
             ],
             'en-US': [
@@ -314,7 +326,31 @@ def api_tts():
         voice_candidates = voice_candidates_by_lang.get(lang_code, [])
 
         if voice_candidates:
-            random.shuffle(voice_candidates)
+            # Mezclar solo dentro de cada calidad: primero voces naturales, Standard solo como último recurso.
+            natural = [v for v in voice_candidates if '-Standard-' not in v]
+            standard = [v for v in voice_candidates if '-Standard-' in v]
+            # Chirp3-HD suena mucho más natural pero no admite SSML/IPA: solo se usa con texto plano.
+            if not ipa and lang_code in ('de-DE', 'fr-FR'):
+                chirp_names = ['Achernar', 'Achird', 'Algenib', 'Algieba', 'Alnilam', 'Aoede', 'Autonoe', 'Callirrhoe',
+                               'Charon', 'Despina', 'Enceladus', 'Erinome', 'Fenrir', 'Gacrux', 'Iapetus', 'Kore',
+                               'Laomedeia', 'Leda', 'Orus', 'Puck', 'Pulcherrima', 'Rasalgethi', 'Sadachbia',
+                               'Sadaltager', 'Schedar', 'Sulafat', 'Umbriel', 'Vindemiatrix', 'Zephyr', 'Zubenelgenubi']
+                chirp = [f'{lang_code}-Chirp3-HD-{n}' for n in chirp_names]
+                random.shuffle(chirp)
+                _last = _LAST_TTS_VOICE.get(lang_code)
+                if _last in chirp:
+                    chirp.remove(_last)
+                    chirp.append(_last)
+                random.shuffle(natural)
+                voice_candidates = chirp + natural + standard
+            else:
+                random.shuffle(natural)
+                # Evitar repetir la voz usada justo antes en este idioma.
+                _last = _LAST_TTS_VOICE.get(lang_code)
+                if _last in natural and len(natural) > 1:
+                    natural.remove(_last)
+                    natural.append(_last)
+                voice_candidates = natural + standard
             last_voice_err: Exception | None = None
             response = None
             for voice_name in voice_candidates:
@@ -327,6 +363,7 @@ def api_tts():
                         audio_config=audio_config
                     )
                     if response and getattr(response, 'audio_content', None):
+                        _LAST_TTS_VOICE[lang_code] = voice_name
                         break
                 except Exception as e:
                     if _is_voice_not_available_error(e):

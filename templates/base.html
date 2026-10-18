@@ -233,7 +233,8 @@
 
             // If we have IPA (e.g., with liaison) and we're in French, prefer Google first to honor pronunciation.
             // Also prefer Google first for French elisions with apostrophes (e.g., “j’ai”), which some local voices misread.
-            if (forceGoogleFirst || forceGoogleForFrenchApostrophe || autoForceGoogleForGerman) {
+            // Google Cloud TTS siempre primero (voz Neural2 aleatoria en el servidor); voces locales solo como respaldo.
+            if (true) {
                 const ok = await _tryGoogleTTSOnce();
                 if (ok) return true;
                 const v = (localVoices && localVoices.length) ? localVoices[Math.floor(Math.random() * localVoices.length)] : null;
