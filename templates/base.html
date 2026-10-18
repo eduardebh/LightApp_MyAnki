@@ -828,6 +828,13 @@
             document.addEventListener('click', function(e) {
                 try {
                     const el = e.target && e.target.closest ? e.target.closest('#arrow-left,#arrow-right,#stop-btn') : null;
+                    // Clicks reales: reproducir la palabra y retrasar el avance a la siguiente
+                    if (el && e.isTrusted && el.id !== 'stop-btn') {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        if (!el.disabled) advanceWithDelay(el);
+                        return;
+                    }
                     if (el) {
                         window._autoAdvanceToken = (window._autoAdvanceToken || 0) + 1;
                         try { console.debug('[AutoAdvance] cancelled by user click', {id: el.id || el.tagName, newToken: window._autoAdvanceToken}); } catch(e){}
@@ -1016,6 +1023,17 @@
         }
     }
 
+    const ADVANCE_DELAY_MS = 900;
+    function advanceWithDelay(btn) {
+        if (window._advancePending) return;
+        window._advancePending = true;
+        replayCurrentWord();
+        setTimeout(() => {
+            window._advancePending = false;
+            if (btn && btn.isConnected && !btn.disabled) btn.click();
+        }, ADVANCE_DELAY_MS);
+    }
+
     function startAutoAdvanceForWord(word, lang, ipaPhoneme=null) {
         setCurrentPlaybackState(word, lang, ipaPhoneme);
     }
@@ -1124,22 +1142,12 @@
             const stopBtn = document.getElementById('stop-btn');
             if (e.key === 'j' || e.key === 'J') {
                 if (rightBtn && !rightBtn.disabled) {
-                    // Cancelar audio antes de cambiar palabra
-                    if (window.speechSynthesis) window.speechSynthesis.cancel();
-                    if (window._currentGoogleAudio && typeof window._currentGoogleAudio.pause === 'function') {
-                        window._currentGoogleAudio.pause();
-                        window._currentGoogleAudio.currentTime = 0;
-                    }
-                    rightBtn.click();
+                    // Reproduce la palabra valorada antes de pasar a la siguiente
+                    advanceWithDelay(rightBtn);
                 }
             } else if (e.key === 'f' || e.key === 'F') {
                 if (leftBtn && !leftBtn.disabled) {
-                    if (window.speechSynthesis) window.speechSynthesis.cancel();
-                    if (window._currentGoogleAudio && typeof window._currentGoogleAudio.pause === 'function') {
-                        window._currentGoogleAudio.pause();
-                        window._currentGoogleAudio.currentTime = 0;
-                    }
-                    leftBtn.click();
+                    advanceWithDelay(leftBtn);
                 }
             } else if (e.code === 'Space' || e.key === ' ') {
                 // Si está visible el botón Start
