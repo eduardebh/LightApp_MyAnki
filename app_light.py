@@ -541,6 +541,37 @@ def get_association():
         print('[ERROR] get_association:', e)
         return {'error': 'Internal error'}, 500
 
+# Endpoint para obtener la Grammar_rule de una palabra de la lista activa
+@app.route('/api/get_grammar_rule', methods=['POST'])
+def get_grammar_rule():
+    user_id = flask_session.get('user_id')
+    if not user_id:
+        return {'error': 'Not logged in'}, 401
+    data = request.get_json(silent=True) or {}
+    word = data.get('word')
+    if not word:
+        return {'error': 'No word provided'}, 400
+    try:
+        conn = get_pg_conn()
+        cur = conn.cursor()
+        cur.execute('SELECT last_list FROM users WHERE id = %s', (user_id,))
+        row = cur.fetchone()
+        if not row or not row[0]:
+            cur.close(); conn.close()
+            return {'error': 'No active list'}, 400
+        active_list_id = row[0]
+        cur.execute('SELECT * FROM words WHERE word = %s AND list_id = %s', (word, active_list_id))
+        row = cur.fetchone()
+        cols = [d[0].lower() for d in cur.description] if cur.description else []
+        cur.close(); conn.close()
+        if not row:
+            return {'error': 'Word not found'}, 404
+        rule = row[cols.index('grammar_rule')] if 'grammar_rule' in cols else ''
+        return {'grammar_rule': rule or ''}
+    except Exception as e:
+        print('[ERROR] get_grammar_rule:', e)
+        return {'error': 'Internal error'}, 500
+
 # Endpoint para obtener todas las palabras de la lista activa (word, association, IPA_word)
 @app.route('/login', methods=['GET', 'POST'])
 def login():

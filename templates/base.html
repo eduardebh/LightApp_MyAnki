@@ -621,8 +621,8 @@
                     </div>
                 </div>
         <div style="display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap; margin-top:16px;">
-            <button id="replay-word-btn" type="button" title="Reproducir palabra" aria-label="Reproducir palabra" style="display:none; width:48px; height:48px; border:none; border-radius:50%; background:#38bdf8; color:#08111f; font-weight:bold; cursor:pointer; box-shadow:0 2px 8px #0002; font-size:1.35em; line-height:1; padding:0;">🔊</button>
-            <button id="start-btn" class="mobile-btn" title="Start (Espacio)" aria-label="Start" aria-keyshortcuts="Space" style="font-size:1.3em;padding:18px 40px;margin:0 auto;text-decoration:none;">Start</button>
+            <button id="replay-word-btn" type="button" title="Reproducir palabra (R)" aria-label="Reproducir palabra" aria-keyshortcuts="R" style="display:none; width:48px; height:48px; border:none; border-radius:50%; background:#38bdf8; color:#08111f; font-weight:bold; cursor:pointer; box-shadow:0 2px 8px #0002; font-size:1.35em; line-height:1; padding:0;">🔊</button>
+                        <button id="grammar-rule-btn" type="button" title="Mostrar regla gramatical (U)" aria-keyshortcuts="U" aria-label="Mostrar regla gramatical" style="display:none; width:48px; height:48px; border:none; border-radius:50%; background:#38bdf8; color:#08111f; font-weight:bold; cursor:pointer; box-shadow:0 2px 8px #0002; font-size:1.35em; line-height:1; padding:0;">⚙️</button>            <button id="start-btn" class="mobile-btn" title="Start (Enter)" aria-label="Start" aria-keyshortcuts="Enter" style="font-size:1.3em;padding:18px 40px;margin:0 auto;text-decoration:none;">Start</button>
         </div>
         <div id="ipa-word-container" style="margin-top:40px;"></div>
     </div>
@@ -983,8 +983,8 @@
                 window._toggleWordRevealed[wordKey] = false;
                 toggleDiv.onclick = revealWord;
                 window._toggleWordKeyHandler = function(e) {
-                    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
-                    if ((e.key === 'u' || e.key === 'U') && toggleDiv && toggleDiv.offsetParent !== null) {
+                    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+                    if ((e.code === 'Space' || e.key === ' ') && toggleDiv && toggleDiv.offsetParent !== null) {
                         e.preventDefault();
                         revealWord();
                     }
@@ -1010,6 +1010,11 @@
             const sessionActive = startBtn && window.getComputedStyle(startBtn).display === 'none';
             replayBtn.style.display = window._currentWordSpeechState.word && sessionActive ? 'inline-flex' : 'none';
             replayBtn.disabled = !window._currentWordSpeechState.word;
+            const grammarBtn = document.getElementById('grammar-rule-btn');
+            if (grammarBtn) {
+                grammarBtn.style.display = replayBtn.style.display;
+                grammarBtn.disabled = replayBtn.disabled;
+            }
         }
     }
 
@@ -1149,6 +1154,8 @@
             const rightBtn = document.getElementById('arrow-right');
             const startBtn = document.getElementById('start-btn');
             const stopBtn = document.getElementById('stop-btn');
+            const replayBtn0 = document.getElementById('replay-word-btn');
+            const grammarBtn0 = document.getElementById('grammar-rule-btn');
             if (e.key === 'j' || e.key === 'J') {
                 if (rightBtn && !rightBtn.disabled) {
                     // Reproduce la palabra valorada antes de pasar a la siguiente
@@ -1158,8 +1165,11 @@
                 if (leftBtn && !leftBtn.disabled) {
                     advanceWithDelay(leftBtn);
                 }
-            } else if (e.code === 'Space' || e.key === ' ') {
-                // Si está visible el botón Start
+            } else if (e.key === 'r' || e.key === 'R') {
+                if (!e.repeat && replayBtn0 && replayBtn0.offsetParent !== null && !replayBtn0.disabled) replayBtn0.click();
+            } else if (e.key === 'u' || e.key === 'U') {
+                if (!e.repeat && grammarBtn0 && grammarBtn0.offsetParent !== null && !grammarBtn0.disabled) grammarBtn0.click();
+            } else if (e.key === 'Enter') {
                 if (startBtn && startBtn.offsetParent !== null && !startBtn.disabled) {
                     e.preventDefault();
                     if (window.speechSynthesis) window.speechSynthesis.cancel();
@@ -1187,7 +1197,35 @@
                 replayCurrentWord();
             });
         }
+        var grammarBtn = document.getElementById('grammar-rule-btn');
+        if (grammarBtn) {
+            grammarBtn.addEventListener('click', function() {
+                const word = (window._currentWordSpeechState || {}).word;
+                const row = document.getElementById('association-row');
+                if (!word || !row) return;
+                let box = document.getElementById('grammar-rule-display');
+                if (!box) {
+                    box = document.createElement('div');
+                    box.id = 'grammar-rule-display';
+                    box.style.cssText = 'display:flex;justify-content:center;max-width:90vw;margin:8px auto 0;white-space:normal;text-align:center;color:#fde047;font-size:1.7em;line-height:1.2;';
+                    row.insertAdjacentElement('afterend', box);
+                }
+                fetch('/api/get_grammar_rule', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({word})
+                })
+                .then(resp => resp.json())
+                .then(result => { box.textContent = (result.grammar_rule || '').toString(); })
+                .catch(() => { box.textContent = ''; });
+            });
+        }
         function setReplayButtonVisibility(visible) {
+            if (grammarBtn) {
+                grammarBtn.style.display = visible ? 'inline-flex' : 'none';
+                grammarBtn.style.alignItems = 'center';
+                grammarBtn.style.justifyContent = 'center';
+            }
             if (!replayBtn) return;
             replayBtn.style.display = visible ? 'inline-flex' : 'none';
             replayBtn.style.alignItems = 'center';
@@ -1206,19 +1244,19 @@
                             _setCurrentWordForDelete(null, null);
                         } else {
                             _setCurrentWordForDelete(data.word, data.ipa_word);
-                            cont.innerHTML = `
-                                <div id="toggle-word" class="sentence ipa-display" role="button" tabindex="0" aria-label="Revelar o alternar palabra" aria-keyshortcuts="U" title="Revelar/alternar (U)" style="display:inline-block;cursor:pointer;user-select:none;">&nbsp;</div>
+                            cont.innerHTML = `
+                                <div id="toggle-word" class="sentence ipa-display" role="button" tabindex="0" aria-label="Revelar o alternar palabra" aria-keyshortcuts="Space" title="Revelar/alternar (Espacio)" style="display:inline-block;cursor:pointer;user-select:none;">&nbsp;</div>
                                 <div style="margin-top:32px; display:flex; justify-content:center; gap:32px;">
                                     <button id="arrow-left" type="button" class="arrow-btn" title="Incorrecto (F)" aria-label="Incorrecto" aria-keyshortcuts="F" style="display:flex;align-items:center;justify-content:center;font-size:2.3em;font-weight:bold;padding:0.4em 0.7em;border-radius:50%;border:none;background:#23272f;color:#ef4444;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;line-height:1;"><span style="display:flex;align-items:center;justify-content:center;font-size:1.2em;font-weight:900;">✗</span></button>
                                     <button id="arrow-right" type="button" class="arrow-btn" title="Correcto (J)" aria-label="Correcto" aria-keyshortcuts="J" style="display:flex;align-items:center;justify-content:center;font-size:2.3em;font-weight:bold;padding:0.4em 0.7em;border-radius:50%;border:none;background:#23272f;color:#22c55e;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;line-height:1;"><span style="display:flex;align-items:center;justify-content:center;font-size:1.2em;font-weight:900;">✓</span></button>
                                 </div>
                                 <div id="association-row" style="margin-top:18px; display:flex; justify-content:center; align-items:center; min-height:2.5em;">
-                                    <div id="association-content" style="display:flex; align-items:center; justify-content:center; max-width:90vw; transition:opacity 0.25s; opacity:1;">
-                                        <button id="show-association-btn" type="button" title="Mostrar asociación (I)" aria-label="Mostrar asociación" aria-keyshortcuts="I" style="font-size:1.7em;background:none;border:none;cursor:pointer;width:2.5em;height:2.5em;line-height:1;vertical-align:middle;padding:0;transition:opacity 0.2s;display:flex;align-items:center;justify-content:center;">&#x1F4A1;</button>
+                                    <div id="association-content" style="display:flex; align-items:center; justify-content:center; max-width:90vw; transition:opacity 0.25s; opacity:1;">
+                                        <button id="show-association-btn" type="button" title="Mostrar asociación (H)" aria-label="Mostrar asociación" aria-keyshortcuts="H" style="font-size:1.7em;background:none;border:none;cursor:pointer;width:2.5em;height:2.5em;line-height:1;vertical-align:middle;padding:0;transition:opacity 0.2s;display:flex;align-items:center;justify-content:center;">&#x1F4A1;</button>
                                     </div>
                                 </div>
                                 <div style="margin-top:24px; display:flex; justify-content:center;">
-                                    <button id="stop-btn" type="button" class="arrow-btn" title="Stop (Espacio)" aria-label="Stop" aria-keyshortcuts="Space" style="font-size:1.1em;padding:0.5em 2.5em;border-radius:12px;border:none;background:#fde047;color:#18181b;font-weight:bold;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">Stop</button>
+                                    <button id="stop-btn" type="button" class="arrow-btn"                                     title="Stop (Enter)" aria-label="Stop" aria-keyshortcuts="Enter" style="font-size:1.1em;padding:0.5em 2.5em;border-radius:12px;border:none;background:#fde047;color:#18181b;font-weight:bold;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">Stop</button>
                                 </div>
                             `;
                             // Handler para mostrar la asociación (clic y tecla 'i')
@@ -1265,8 +1303,8 @@
                                 }
                                 showAssocBtn.onclick = revealAssociation;
                                 // Tecla 'i' para mostrar asociación
-                                const keyHandler = function(e) {
-                                    if ((e.key === 'i' || e.key === 'I') && !e.repeat && showAssocBtn && !showAssocBtn.disabled && showAssocBtn.style.display !== 'none') {
+                                const keyHandler = function(e) {
+                                    if ((e.key === 'h' || e.key === 'H') && !e.repeat && showAssocBtn && !showAssocBtn.disabled && showAssocBtn.style.display !== 'none') {
                                         revealAssociation();
                                     }
                                 };
@@ -1316,9 +1354,9 @@
                                     try {
                                         toggleDiv.setAttribute('role', 'button');
                                         toggleDiv.setAttribute('tabindex', '0');
-                                        toggleDiv.setAttribute('aria-keyshortcuts', 'U');
+                                        toggleDiv.setAttribute('aria-keyshortcuts', 'Space');
                                         toggleDiv.setAttribute('aria-label', 'Revelar o alternar palabra');
-                                        toggleDiv.setAttribute('title', 'Revelar/alternar (U)');
+                                        toggleDiv.setAttribute('title', 'Revelar/alternar (Espacio)');
                                     } catch(e) {}
                                     toggleDiv.onclick = revealWord;
                                     toggleDiv.addEventListener('keydown', function(ev) {
@@ -1328,8 +1366,8 @@
                                         }
                                     });
                                     window._toggleWordKeyHandler = function(e) {
-                                        if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
-                                        if ((e.key === 'u' || e.key === 'U') && toggleDiv && toggleDiv.offsetParent !== null) {
+                                        if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+                                        if ((e.code === 'Space' || e.key === ' ') && toggleDiv && toggleDiv.offsetParent !== null) {
                                             e.preventDefault();
                                             revealWord();
                                         }
@@ -1367,19 +1405,19 @@
                                             }).then(resp => resp.json()).then(newData => {
                                                 if (!newData.error) {
                                                     _setCurrentWordForDelete(newData.word, newData.ipa_word);
-                                                    cont.innerHTML = `
-                                                        <div id="toggle-word" class="sentence ipa-display" role="button" tabindex="0" aria-label="Revelar o alternar palabra" aria-keyshortcuts="U" title="Revelar/alternar (U)" style="display:inline-block;cursor:pointer;user-select:none;">&nbsp;</div>
+                                                    cont.innerHTML = `
+                                                        <div id="toggle-word" class="sentence ipa-display" role="button" tabindex="0" aria-label="Revelar o alternar palabra" aria-keyshortcuts="Space" title="Revelar/alternar (Espacio)" style="display:inline-block;cursor:pointer;user-select:none;">&nbsp;</div>
                                                         <div style="margin-top:32px; display:flex; justify-content:center; gap:32px;">
                                                             <button id="arrow-left" type="button" class="arrow-btn" title="Incorrecto (F)" aria-label="Incorrecto" aria-keyshortcuts="F" style="font-size:2em;padding:0.4em 0.7em;border-radius:50%;border:none;background:#23272f;color:#ef4444;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">✗</button>
                                                             <button id="arrow-right" type="button" class="arrow-btn" title="Correcto (J)" aria-label="Correcto" aria-keyshortcuts="J" style="font-size:2em;padding:0.4em 0.7em;border-radius:50%;border:none;background:#23272f;color:#22c55e;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">✓</button>
                                                         </div>
                                                         <div id="association-row" style="margin-top:18px; display:flex; justify-content:center; align-items:center; min-height:2.5em;">
-                                                            <div id="association-content" style="display:flex; align-items:center; justify-content:center; max-width:90vw; transition:opacity 0.25s; opacity:1;">
-                                                                <button id="show-association-btn" type="button" title="Mostrar asociación (I)" aria-label="Mostrar asociación" aria-keyshortcuts="I" style="font-size:1.7em;background:none;border:none;cursor:pointer;width:2.5em;height:2.5em;line-height:1;vertical-align:middle;padding:0;transition:opacity 0.2s;display:flex;align-items:center;justify-content:center;">&#x1F4A1;</button>
+                                                            <div id="association-content" style="display:flex; align-items:center; justify-content:center; max-width:90vw; transition:opacity 0.25s; opacity:1;">
+                                                                <button id="show-association-btn" type="button" title="Mostrar asociación (H)" aria-label="Mostrar asociación" aria-keyshortcuts="H" style="font-size:1.7em;background:none;border:none;cursor:pointer;width:2.5em;height:2.5em;line-height:1;vertical-align:middle;padding:0;transition:opacity 0.2s;display:flex;align-items:center;justify-content:center;">&#x1F4A1;</button>
                                                             </div>
                                                         </div>
-                                                        <div style="margin-top:24px; display:flex; justify-content:center;">
-                                                            <button id="stop-btn" type="button" class="arrow-btn" title="Stop (Espacio)" aria-label="Stop" aria-keyshortcuts="Space" style="font-size:1.1em;padding:0.5em 2.5em;border-radius:12px;border:none;background:#fde047;color:#18181b;font-weight:bold;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">Stop</button>
+                                                        <div style="margin-top:24px; display:flex; justify-content:center;">
+                                                            <button id="stop-btn" type="button" class="arrow-btn" title="Stop (Enter)" aria-label="Stop" aria-keyshortcuts="Enter" style="font-size:1.1em;padding:0.5em 2.5em;border-radius:12px;border:none;background:#fde047;color:#18181b;font-weight:bold;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">Stop</button>
                                                         </div>`;
                                                     // Handler para mostrar la asociación (clic y tecla 'i')
                                                     const showAssocBtn = document.getElementById('show-association-btn');
@@ -1422,8 +1460,8 @@
                                                             }, 200);
                                                         };
                                                         // Tecla 'i' para mostrar asociación
-                                                        const keyHandler = function(e) {
-                                                            if ((e.key === 'i' || e.key === 'I') && !e.repeat && showAssocBtn && !showAssocBtn.disabled && showAssocBtn.style.display !== 'none') {
+                                                        const keyHandler = function(e) {
+                                                            if ((e.key === 'h' || e.key === 'H') && !e.repeat && showAssocBtn && !showAssocBtn.disabled && showAssocBtn.style.display !== 'none') {
                                                                 showAssocBtn.onclick();
                                                             }
                                                         };
@@ -1472,8 +1510,8 @@
                                                             window._toggleWordRevealed[wordKey] = false;
                                                             toggleDiv.onclick = revealWord;
                                                             window._toggleWordKeyHandler = function(e) {
-                                                                if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
-                                                                if ((e.key === 'u' || e.key === 'U') && toggleDiv && toggleDiv.offsetParent !== null) {
+                                                                if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+                                                                if ((e.code === 'Space' || e.key === ' ') && toggleDiv && toggleDiv.offsetParent !== null) {
                                                                     e.preventDefault();
                                                                     revealWord();
                                                                 }
@@ -1587,8 +1625,8 @@
                                                                     });
                                                                 }, 200);
                                                             };
-                                                            const keyHandler = function(e) {
-                                                                if ((e.key === 'i' || e.key === 'I') && !e.repeat && showAssocBtn && !showAssocBtn.disabled && showAssocBtn.style.display !== 'none') {
+                                                            const keyHandler = function(e) {
+                                                                if ((e.key === 'h' || e.key === 'H') && !e.repeat && showAssocBtn && !showAssocBtn.disabled && showAssocBtn.style.display !== 'none') {
                                                                     showAssocBtn.onclick();
                                                                 }
                                                             };
@@ -1690,8 +1728,8 @@
                                                                         });
                                                                     }, 200);
                                                                 };
-                                                                const keyHandler = function(e) {
-                                                                    if ((e.key === 'i' || e.key === 'I') && !e.repeat && showAssocBtn && !showAssocBtn.disabled && showAssocBtn.style.display !== 'none') {
+                                                                const keyHandler = function(e) {
+                                                                    if ((e.key === 'h' || e.key === 'H') && !e.repeat && showAssocBtn && !showAssocBtn.disabled && showAssocBtn.style.display !== 'none') {
                                                                         showAssocBtn.onclick();
                                                                     }
                                                                 };
