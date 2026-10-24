@@ -526,6 +526,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MyAnki Light</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -941,6 +944,15 @@
     }
 
     // --- Helper global para inicializar el toggle entre IPA y palabra (reutilizable) ---
+    function formatIpaForDisplay(value) {
+        const ipa = value == null ? '' : String(value);
+        try {
+            return ipa.normalize('NFC');
+        } catch (error) {
+            return ipa;
+        }
+    }
+
     function setupToggleWordNav(wordData) {
         try {
             const toggleDiv = document.getElementById('toggle-word');
@@ -955,7 +967,7 @@
             function revealWord() {
                 if (!window._toggleWordRevealed[wordKey]) {
                     showingIPA = true;
-                    if (toggleDiv) toggleDiv.textContent = wordData.ipa_word;
+                    if (toggleDiv) toggleDiv.textContent = formatIpaForDisplay(wordData.ipa_word);
                     toggleDiv && toggleDiv.classList.remove('word-display');
                     toggleDiv && toggleDiv.classList.add('ipa-display');
                     window._toggleWordRevealed[wordKey] = true;
@@ -967,7 +979,7 @@
                 if (!window._toggleWordRevealed[wordKey]) return;
                 showingIPA = !showingIPA;
                 if (showingIPA) {
-                    if (toggleDiv) toggleDiv.textContent = wordData.ipa_word;
+                    if (toggleDiv) toggleDiv.textContent = formatIpaForDisplay(wordData.ipa_word);
                     toggleDiv && toggleDiv.classList.remove('word-display');
                     toggleDiv && toggleDiv.classList.add('ipa-display');
                 } else {
@@ -1326,7 +1338,7 @@
                                 function revealWord() {
                                     if (!window._toggleWordRevealed[wordKey]) {
                                         showingIPA = true;
-                                        toggleDiv.textContent = data.ipa_word;
+                                        toggleDiv.textContent = formatIpaForDisplay(data.ipa_word);
                                         toggleDiv.classList.remove('word-display');
                                         toggleDiv.classList.add('ipa-display');
                                         window._toggleWordRevealed[wordKey] = true;
@@ -1338,7 +1350,7 @@
                                     if (!window._toggleWordRevealed[wordKey]) return;
                                     showingIPA = !showingIPA;
                                     if (showingIPA) {
-                                        toggleDiv.textContent = data.ipa_word;
+                                        toggleDiv.textContent = formatIpaForDisplay(data.ipa_word);
                                         toggleDiv.classList.remove('word-display');
                                         toggleDiv.classList.add('ipa-display');
                                     } else {
@@ -1482,7 +1494,7 @@
                                                         function revealWord() {
                                                             if (!window._toggleWordRevealed[wordKey]) {
                                                                 showingIPA = true;
-                                                                toggleDiv.textContent = newData.ipa_word;
+                                                                toggleDiv.textContent = formatIpaForDisplay(newData.ipa_word);
                                                                 toggleDiv.classList.remove('word-display');
                                                                 toggleDiv.classList.add('ipa-display');
                                                                 window._toggleWordRevealed[wordKey] = true;
@@ -1494,7 +1506,7 @@
                                                             if (!window._toggleWordRevealed[wordKey]) return;
                                                             showingIPA = !showingIPA;
                                                             if (showingIPA) {
-                                                                toggleDiv.textContent = newData.ipa_word;
+                                                                toggleDiv.textContent = formatIpaForDisplay(newData.ipa_word);
                                                                 toggleDiv.classList.remove('word-display');
                                                                 toggleDiv.classList.add('ipa-display');
                                                             } else {
