@@ -186,6 +186,41 @@ def log_request_info():
 
 
 _LAST_TTS_VOICE = {}
+_NATURAL_TTS_VOICES = {}
+_NATURAL_TTS_VOICE_MARKERS = ('-Chirp3-HD-', '-Neural2-', '-Studio-', '-Wavenet-')
+
+
+def _get_available_natural_voices(client, language_code):
+    """Return the Google Cloud natural voices enabled for a language."""
+    cached_voices = _NATURAL_TTS_VOICES.get(language_code)
+    if cached_voices:
+        return cached_voices[:]
+
+    try:
+        response = client.list_voices(language_code=language_code)
+    except Exception as exc:
+        print(f'[TTS] Could not list Google natural voices for {language_code}: {exc}')
+        return []
+
+    voices = sorted({
+        voice.name
+        for voice in response.voices
+        if voice.name.startswith(f'{language_code}-')
+        and any(marker in voice.name for marker in _NATURAL_TTS_VOICE_MARKERS)
+    })
+    if voices:
+        _NATURAL_TTS_VOICES[language_code] = voices
+    return voices[:]
+
+
+def _shuffle_voices_without_repeating_last(voices, language_code):
+    shuffled_voices = voices[:]
+    random.shuffle(shuffled_voices)
+    last_voice = _LAST_TTS_VOICE.get(language_code)
+    if last_voice in shuffled_voices and len(shuffled_voices) > 1:
+        shuffled_voices.remove(last_voice)
+        shuffled_voices.append(last_voice)
+    return shuffled_voices
 
 
 @app.route('/favicon.ico')
@@ -238,9 +273,9 @@ def api_tts():
     ipa = (data.get('ipa') or '').strip() if isinstance(data, dict) else ''
     if not text:
         return jsonify({'success': False, 'error': 'No text provided'}), 400
-    # Keep local dev resilient: disable cloud TTS by default and use browser fallback.
-    # Set DISABLE_GOOGLE_TTS=0 only when you explicitly want to call Google TTS.
-    disable_google_tts = os.environ.get('DISABLE_GOOGLE_TTS', '1').lower() in ('1', 'true', 'yes', 'on')
+    # Browser synthesis remains the fallback when Cloud TTS is unavailable.
+    # Set DISABLE_GOOGLE_TTS=1 to explicitly disable Google Cloud TTS.
+    disable_google_tts = os.environ.get('DISABLE_GOOGLE_TTS', '0').lower() in ('1', 'true', 'yes', 'on')
     if disable_google_tts:
         return jsonify({'success': False, 'error': 'Google Cloud TTS disabled'}), 200
     if texttospeech is None:
@@ -326,31 +361,15 @@ def api_tts():
         voice_candidates = voice_candidates_by_lang.get(lang_code, [])
 
         if voice_candidates:
-            # Mezclar solo dentro de cada calidad: primero voces naturales, Standard solo como último recurso.
-            natural = [v for v in voice_candidates if '-Standard-' not in v]
+            # Query the voices enabled in this Google project. This is especially
+            # important for French, whose available natural voices vary by project.
+            natural = _get_available_natural_voices(client, lang_code)
+            if ipa:
+                natural = [voice_name for voice_name in natural if '-Chirp3-HD-' not in voice_name]
+            if not natural:
+                natural = [v for v in voice_candidates if '-Standard-' not in v]
             standard = [v for v in voice_candidates if '-Standard-' in v]
-            # Chirp3-HD suena mucho más natural pero no admite SSML/IPA: solo se usa con texto plano.
-            if not ipa and lang_code in ('de-DE', 'fr-FR'):
-                chirp_names = ['Achernar', 'Achird', 'Algenib', 'Algieba', 'Alnilam', 'Aoede', 'Autonoe', 'Callirrhoe',
-                               'Charon', 'Despina', 'Enceladus', 'Erinome', 'Fenrir', 'Gacrux', 'Iapetus', 'Kore',
-                               'Laomedeia', 'Leda', 'Orus', 'Puck', 'Pulcherrima', 'Rasalgethi', 'Sadachbia',
-                               'Sadaltager', 'Schedar', 'Sulafat', 'Umbriel', 'Vindemiatrix', 'Zephyr', 'Zubenelgenubi']
-                chirp = [f'{lang_code}-Chirp3-HD-{n}' for n in chirp_names]
-                random.shuffle(chirp)
-                _last = _LAST_TTS_VOICE.get(lang_code)
-                if _last in chirp:
-                    chirp.remove(_last)
-                    chirp.append(_last)
-                random.shuffle(natural)
-                voice_candidates = chirp + natural + standard
-            else:
-                random.shuffle(natural)
-                # Evitar repetir la voz usada justo antes en este idioma.
-                _last = _LAST_TTS_VOICE.get(lang_code)
-                if _last in natural and len(natural) > 1:
-                    natural.remove(_last)
-                    natural.append(_last)
-                voice_candidates = natural + standard
+            voice_candidates = _shuffle_voices_without_repeating_last(natural, lang_code) + standard
             last_voice_err: Exception | None = None
             response = None
             for voice_name in voice_candidates:
