@@ -763,7 +763,7 @@ def update_counter():
 
         # If the word reaches the success threshold, mark it as inactive for the "added" pool.
         # We only flip TRUE -> FALSE here; re-adding is handled explicitly by the existing endpoint.
-        threshold = 15
+        threshold = 100
         cur.execute(
             'UPDATE words\n'
             'SET counter_word = %s,\n'
