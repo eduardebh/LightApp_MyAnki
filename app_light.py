@@ -29,6 +29,14 @@ from flask import Flask, render_template, request, redirect, url_for, session as
 from dotenv import load_dotenv
 import psycopg2
 from werkzeug.security import check_password_hash, generate_password_hash
+
+WORD_SELECTION_DECAY = 0.75
+
+
+def word_selection_weight(counter_word):
+    return 2 ** (-counter_word * WORD_SELECTION_DECAY)
+
+
 openai = None
 try:
     import openai
@@ -812,8 +820,8 @@ def api_random_word():
         cur.execute('SELECT language FROM word_lists WHERE id = %s', (active_list_id,))
         lang_row = cur.fetchone()
         language = lang_row[0] if lang_row and lang_row[0] else 'de'
-        # Peso exponencial: 2^(-counter_word)
-        weights = [2 ** (-w[2]) for w in words]
+        # Priorizar los contadores bajos con una caída más gradual.
+        weights = [word_selection_weight(w[2]) for w in words]
         # Exclude the previous word if possible
         filtered_words = words
         filtered_weights = weights
@@ -950,8 +958,8 @@ def random_word():
         if not words:
             cur.close(); conn.close()
             return render_template('random_word.html', error='No words in list', active_list=active_list, all_lists=all_lists)
-        # Peso exponencial: 2^(-counter_word)
-        weights = [2 ** (-w[2]) for w in words]
+        # Priorizar los contadores bajos con una caída más gradual.
+        weights = [word_selection_weight(w[2]) for w in words]
         selected = random.choices(words, weights=weights, k=1)[0]
         selected_word = selected[1]
         ipa_word = selected[3]
