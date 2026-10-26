@@ -145,13 +145,13 @@
                     .replace(new RegExp('\\b(t)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'te', 'Te'));
             }
 
-            // Remove/neutralize remaining punctuation for local speech
+            // Remove/neutralize remaining punctuation for local speech.
+            // Local engines can vocalize punctuation names instead of treating them as pauses.
             t = t
-                // Dots in abbreviations or after letters
-                .replace(/(?<=[A-Za-zÀ-ÖØ-öø-ÿ])\.(?=[A-Za-zÀ-ÖØ-öø-ÿ])/g, '')
-                .replace(/(?<=[A-Za-zÀ-ÖØ-öø-ÿ])\.(?!\d)/g, '')
-                // Apostrophes left (turn into nothing)
-                .replace(/[’']/g, '')
+                // Periods and ellipses, including Unicode variants
+                .replace(/[.\u2024\u2026\uFE52\uFF0E]+/g, ' ')
+                // Apostrophes left, including keyboard and Unicode variants
+                .replace(/['’ʼ`´＇]/g, '')
                 // Common punctuation to spaces
                 .replace(/[\u00B7·,:;!?()\[\]{}"“”«»]/g, ' ')
                 // Hyphens/emdash to spaces
@@ -420,7 +420,7 @@
             if (!hasLocalTTS) return;
             const voices = (typeof getNaturalVoices === 'function') ? getNaturalVoices(language) : (window.speechSynthesis.getVoices() || []);
             const voice = (voices && voices.length) ? voices[Math.floor(Math.random() * voices.length)] : null;
-            const utter = new SpeechSynthesisUtterance(text);
+            const utter = new SpeechSynthesisUtterance(_normalizeTextForLocalSpeech(text, language));
             utter.lang = language;
             if (voice) utter.voice = voice;
             window.speechSynthesis.speak(utter);
