@@ -110,9 +110,8 @@
                     .replace(/e`/g, 'è').replace(/E`/g, 'È')
                     .replace(/u`/g, 'ù').replace(/U`/g, 'Ù');
 
-                return t;
             }
-            return t;
+            return _normalizeTextForLocalSpeech(t, language);
         }
 
         function _normalizeTextForLocalSpeech(text, language) {
