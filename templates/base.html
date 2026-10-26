@@ -16,8 +16,10 @@
             <button onclick="closeAddWordPopup()" style="background:none;border:none;font-size:1.5em;color:#fde047;cursor:pointer;">&times;</button>
         </div>
         <input id="add-word-input" type="text" placeholder="New word or phrase" style="width:90%;padding:8px;font-size:1em;border-radius:6px;border:1px solid #374151;background:#18181b;color:#f3f4f6;margin-bottom:12px;">
-               <textarea id="add-association-input" rows="2" placeholder="Association (optional)" style="width:90%;padding:8px;font-size:1em;border-radius:6px;border:1px solid #374151;background:#18181b;color:#f3f4f6;margin-bottom:12px;resize:vertical;font-family:inherit;"></textarea>
-               <button onclick="submitAddWord()" style="padding:8px 16px;font-size:1em;border-radius:6px;background:#059669;color:#fff;border:none;cursor:pointer;">Add</button>
+        <input id="add-ipa-input" type="text" placeholder="IPA (optional)" style="width:90%;padding:8px;font-size:1em;border-radius:6px;border:1px solid #374151;background:#18181b;color:#f3f4f6;margin-bottom:12px;">
+        <textarea id="add-association-input" rows="2" placeholder="Association (optional)" style="width:90%;padding:8px;font-size:1em;border-radius:6px;border:1px solid #374151;background:#18181b;color:#f3f4f6;margin-bottom:12px;resize:vertical;font-family:inherit;"></textarea>
+        <textarea id="add-grammar-rule-input" rows="2" placeholder="Grammar rule (optional)" style="width:90%;padding:8px;font-size:1em;border-radius:6px;border:1px solid #374151;background:#18181b;color:#f3f4f6;margin-bottom:12px;resize:vertical;font-family:inherit;"></textarea>
+        <button onclick="submitAddWord()" style="padding:8px 16px;font-size:1em;border-radius:6px;background:#059669;color:#fff;border:none;cursor:pointer;">Add</button>
         <div id="add-word-feedback" style="margin-top:10px;color:#fde047;"></div>
         <div id="add-word-selector" style="margin-top:24px; display:flex; justify-content:center; align-items:center; gap:12px;">
             <span style="color:#fff;font-size:1.1em;">Add word from:</span>
@@ -470,7 +472,9 @@
     // Send word to backend
     async function submitAddWord() {
         const word = document.getElementById('add-word-input').value.trim();
+        const ipaWord = document.getElementById('add-ipa-input').value.trim();
         const association = document.getElementById('add-association-input').value.trim();
+        const grammarRule = document.getElementById('add-grammar-rule-input').value.trim();
         const feedback = document.getElementById('add-word-feedback');
         if (!word) {
             feedback.textContent = 'Please enter a word.';
@@ -481,7 +485,7 @@
             const resp = await fetch('/api/add_word', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ word, association })
+                body: JSON.stringify({ word, ipa_word: ipaWord, association, grammar_rule: grammarRule })
             });
             console.log('add_word response:', resp);
             let data = null;
@@ -494,7 +498,9 @@
             if (data && data.success) {
                 feedback.textContent = 'Word added!';
                 document.getElementById('add-word-input').value = '';
+                document.getElementById('add-ipa-input').value = '';
                 document.getElementById('add-association-input').value = '';
+                document.getElementById('add-grammar-rule-input').value = '';
                 // Actualizar tabla de palabras si está abierta
                 const modal = document.getElementById('words-table-modal');
                 if (modal && modal.style.display === 'flex') {

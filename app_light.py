@@ -508,6 +508,10 @@ def api_add_word():
         return jsonify({'success': False, 'error': 'No word provided'}), 400
     association = data.get('association', '')
     association = association.strip() if isinstance(association, str) else ''
+    ipa_word = data.get('ipa_word', '')
+    ipa_word = ipa_word.strip() if isinstance(ipa_word, str) else ''
+    grammar_rule = data.get('grammar_rule', '')
+    grammar_rule = grammar_rule.strip() if isinstance(grammar_rule, str) else ''
     try:
         conn = get_pg_conn()
         cur = conn.cursor()
@@ -523,18 +527,26 @@ def api_add_word():
             cur.close(); conn.close()
             return jsonify({'success': False, 'error': 'No active list'}), 400
         active_list_id = row[0]
-        # Si la palabra ya existe y no se envía asociación, se conserva la actual.
+        # Si la palabra ya existe y no se envía un valor, se conserva el actual.
         cur.execute('''
-            INSERT INTO words (word, association, "IPA_word", list_id, added, counter_word)
-            VALUES (%s, %s, '', %s, TRUE, 0)
+            INSERT INTO words (word, association, "IPA_word", grammar_rule, list_id, added, counter_word)
+            VALUES (%s, %s, %s, %s, %s, TRUE, 0)
             ON CONFLICT (word, list_id) DO UPDATE SET
                 association = CASE WHEN EXCLUDED.association <> '' THEN EXCLUDED.association ELSE words.association END,
+                "IPA_word" = CASE WHEN EXCLUDED."IPA_word" <> '' THEN EXCLUDED."IPA_word" ELSE words."IPA_word" END,
+                grammar_rule = CASE WHEN EXCLUDED.grammar_rule <> '' THEN EXCLUDED.grammar_rule ELSE words.grammar_rule END,
                 added=TRUE,
                 counter_word=0
-        ''', (word, association, active_list_id))
+        ''', (word, association, ipa_word, grammar_rule, active_list_id))
         conn.commit()
         cur.close(); conn.close()
-        return jsonify({'success': True, 'word': word, 'association': association, 'IPA_word': ''})
+        return jsonify({
+            'success': True,
+            'word': word,
+            'association': association,
+            'IPA_word': ipa_word,
+            'grammar_rule': grammar_rule,
+        })
     except Exception as e:
         print('[ERROR] api_add_word:', e)
         return jsonify({'success': False, 'error': 'Internal error'}), 500
