@@ -527,6 +527,8 @@ def api_add_word():
             cur.close(); conn.close()
             return jsonify({'success': False, 'error': 'No active list'}), 400
         active_list_id = row[0]
+        # Upgrade existing databases before writing the grammar rule field.
+        cur.execute('ALTER TABLE words ADD COLUMN IF NOT EXISTS grammar_rule TEXT')
         # Si la palabra ya existe y no se envía un valor, se conserva el actual.
         cur.execute('''
             INSERT INTO words (word, association, "IPA_word", grammar_rule, list_id, added, counter_word)
