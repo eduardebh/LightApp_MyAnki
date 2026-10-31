@@ -654,13 +654,143 @@ def api_all_words():
             cur.close(); conn.close()
             return jsonify([])
         active_list_id = row[0]
-        cur.execute('SELECT id, word, association, "IPA_word", counter_word FROM words WHERE list_id = %s', (active_list_id,))
-        words = [{'id': r[0], 'word': r[1], 'association': r[2], 'IPA_word': r[3], 'counter_word': r[4]} for r in cur.fetchall()]
+        cur.execute('ALTER TABLE words ADD COLUMN IF NOT EXISTS grammar_rule TEXT')
+        conn.commit()
+        cur.execute(
+            'SELECT id, word, association, "IPA_word", grammar_rule, counter_word '
+            'FROM words WHERE list_id = %s',
+            (active_list_id,),
+        )
+        words = [{
+            'id': r[0],
+            'word': r[1],
+            'association': r[2],
+            'IPA_word': r[3],
+            'grammar_rule': r[4],
+            'counter_word': r[5],
+        } for r in cur.fetchall()]
         cur.close(); conn.close()
         return jsonify(words)
     except Exception as e:
         print('[ERROR] api_all_words:', e)
         return jsonify([])
+
+
+@app.route('/api/update_words', methods=['POST'])
+def api_update_words():
+    user_id = flask_session.get('user_id')
+    if not user_id:
+        return jsonify({'success': False, 'error': 'Not logged in'}), 401
+
+    data = request.get_json(silent=True) or {}
+    updates = data.get('words')
+    if not isinstance(updates, list) or not updates:
+        return jsonify({'success': False, 'error': 'No word updates provided'}), 400
+
+    normalized_updates = []
+    seen_ids = set()
+    seen_words = set()
+    for update in updates:
+        if not isinstance(update, dict):
+            return jsonify({'success': False, 'error': 'Invalid word update'}), 400
+
+        word_id = update.get('id')
+        if isinstance(word_id, bool):
+            return jsonify({'success': False, 'error': 'Invalid word ID'}), 400
+        try:
+            word_id = int(word_id)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid word ID'}), 400
+
+        word = update.get('word')
+        association = update.get('association')
+        ipa_word = update.get('IPA_word')
+        grammar_rule = update.get('grammar_rule')
+        if not all(isinstance(value, str) for value in (word, association, ipa_word, grammar_rule)):
+            return jsonify({'success': False, 'error': 'Word values must be text'}), 400
+
+        word = word.strip()
+        if not word:
+            return jsonify({'success': False, 'error': 'Word cannot be empty'}), 400
+        if word_id in seen_ids:
+            return jsonify({'success': False, 'error': 'A word was updated more than once'}), 400
+        if word in seen_words:
+            return jsonify({'success': False, 'error': 'Duplicate words are not allowed in a list'}), 400
+
+        seen_ids.add(word_id)
+        seen_words.add(word)
+        normalized_updates.append({
+            'id': word_id,
+            'word': word,
+            'association': association.strip(),
+            'IPA_word': ipa_word.strip(),
+            'grammar_rule': grammar_rule.strip(),
+        })
+
+    conn = None
+    cur = None
+    try:
+        conn = get_pg_conn()
+        cur = conn.cursor()
+        cur.execute(
+            'SELECT wl.id FROM users u '
+            'JOIN word_lists wl ON wl.id = u.last_list AND wl.user_id = u.id '
+            'WHERE u.id = %s',
+            (user_id,),
+        )
+        row = cur.fetchone()
+        if not row or not row[0]:
+            return jsonify({'success': False, 'error': 'No active list'}), 400
+        active_list_id = row[0]
+        cur.execute('ALTER TABLE words ADD COLUMN IF NOT EXISTS grammar_rule TEXT')
+
+        word_ids = [update['id'] for update in normalized_updates]
+        cur.execute(
+            'SELECT id, word FROM words WHERE list_id = %s AND id = ANY(%s)',
+            (active_list_id, word_ids),
+        )
+        existing_words = {row[0]: row[1] for row in cur.fetchall()}
+        if len(existing_words) != len(normalized_updates):
+            return jsonify({'success': False, 'error': 'One or more words were not found in the active list'}), 404
+
+        cur.execute(
+            'SELECT id, word FROM words WHERE list_id = %s AND word = ANY(%s)',
+            (active_list_id, [update['word'] for update in normalized_updates]),
+        )
+        word_owner_ids = {word: word_id for word_id, word in cur.fetchall()}
+        for update in normalized_updates:
+            owner_id = word_owner_ids.get(update['word'])
+            if owner_id is not None and owner_id != update['id']:
+                return jsonify({
+                    'success': False,
+                    'error': f'The word "{update["word"]}" already exists in the active list',
+                }), 409
+
+        for update in normalized_updates:
+            cur.execute(
+                'UPDATE words SET word = %s, association = %s, "IPA_word" = %s, grammar_rule = %s '
+                'WHERE id = %s AND list_id = %s',
+                (
+                    update['word'],
+                    update['association'],
+                    update['IPA_word'],
+                    update['grammar_rule'],
+                    update['id'],
+                    active_list_id,
+                ),
+            )
+        conn.commit()
+        return jsonify({'success': True, 'words': normalized_updates})
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print('[ERROR] api_update_words:', e)
+        return jsonify({'success': False, 'error': 'Internal error'}), 500
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 # Endpoint para marcar una palabra como added=TRUE en la lista activa
 @app.route('/api/mark_word_added', methods=['POST'])
