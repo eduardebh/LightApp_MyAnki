@@ -4,7 +4,7 @@
         <button id="state-info-btn" title="Ver lista" aria-label="Ver lista" style="width:44px;height:44px;background:#23272f;border-radius:50%;border:none;box-shadow:0 2px 8px #0004;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s;">
             <span style="display:block;width:18px;height:18px;border-radius:50%;background:#38bdf8;"></span>
         </button>
-        <button id="add-word-btn" title="Agregar palabra" aria-label="Agregar palabra" style="width:44px;height:44px;background:#23272f;border-radius:50%;border:none;box-shadow:0 2px 8px #0004;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s;font-size:2em;color:#fde047;">
+        <button id="add-word-btn" title="Agregar palabra (+)" aria-label="Agregar palabra" aria-keyshortcuts="+" style="width:44px;height:44px;background:#23272f;border-radius:50%;border:none;box-shadow:0 2px 8px #0004;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s;font-size:2em;color:#fde047;">
             <span style="font-size:2em;line-height:1;">+</span>
         </button>
     </div>
@@ -309,11 +309,12 @@
             }
         }
     // Show/hide popup
-    document.getElementById('add-word-btn').onclick = function() {
+    function openAddWordPopup() {
         document.getElementById('add-word-popup').style.display = 'block';
         document.getElementById('add-word-input').focus();
         document.getElementById('add-word-feedback').textContent = '';
-    };
+    }
+    document.getElementById('add-word-btn').onclick = openAddWordPopup;
     function closeAddWordPopup() {
         document.getElementById('add-word-popup').style.display = 'none';
     }
@@ -462,11 +463,54 @@
 
     document.addEventListener('DOMContentLoaded', initIpaPopup);
 
-    // Close with Escape
+    // Close open menus with Escape; otherwise pause the active review.
     document.addEventListener('keydown', function(event) {
         if (event.key === 'Escape') {
-            closeAddWordPopup();
-            closeIpaSoundsPopup();
+            const dropdownList = document.getElementById('dropdown-list');
+            if (dropdownList && dropdownList.style.display === 'block') {
+                dropdownList.style.display = 'none';
+                event.preventDefault();
+                return;
+            }
+
+            const wordsTableModal = document.getElementById('words-table-modal');
+            if (wordsTableModal && wordsTableModal.style.display === 'flex') {
+                if (_discardWordsTableChanges()) wordsTableModal.style.display = 'none';
+                event.preventDefault();
+                return;
+            }
+
+            const addWordPopup = document.getElementById('add-word-popup');
+            if (addWordPopup && addWordPopup.style.display === 'block') {
+                closeAddWordPopup();
+                event.preventDefault();
+                return;
+            }
+
+            const ipaSoundsPopup = document.getElementById('ipa-sounds-popup');
+            if (ipaSoundsPopup && ipaSoundsPopup.style.display === 'block') {
+                closeIpaSoundsPopup();
+                event.preventDefault();
+                return;
+            }
+
+            const stopBtn = document.getElementById('stop-btn');
+            if (stopBtn && stopBtn.offsetParent !== null && !stopBtn.disabled) {
+                _cancelAnyAudio();
+                stopBtn.click();
+                event.preventDefault();
+            }
+        } else if (
+            (event.key === '+' || event.code === 'NumpadAdd') &&
+            !event.repeat &&
+            !event.ctrlKey &&
+            !event.altKey &&
+            !event.metaKey &&
+            !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName) &&
+            !document.activeElement.isContentEditable
+        ) {
+            openAddWordPopup();
+            event.preventDefault();
         }
     });
     // Send word to backend
@@ -637,7 +681,7 @@
                 </div>
         <div style="display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap; margin-top:16px;">
             <button id="replay-word-btn" type="button" title="Reproducir palabra (R)" aria-label="Reproducir palabra" aria-keyshortcuts="R" style="display:none; width:48px; height:48px; border:none; border-radius:50%; background:#38bdf8; color:#08111f; font-weight:bold; cursor:pointer; box-shadow:0 2px 8px #0002; font-size:1.35em; line-height:1; padding:0;">🔊</button>
-                        <button id="grammar-rule-btn" type="button" title="Mostrar regla gramatical (U)" aria-keyshortcuts="U" aria-label="Mostrar regla gramatical" style="display:none; width:48px; height:48px; border:none; border-radius:50%; background:#38bdf8; color:#08111f; font-weight:bold; cursor:pointer; box-shadow:0 2px 8px #0002; font-size:1.35em; line-height:1; padding:0;">⚙️</button>            <button id="start-btn" class="mobile-btn" title="Start (Enter)" aria-label="Start" aria-keyshortcuts="Enter" style="font-size:1.3em;padding:18px 40px;margin:0 auto;text-decoration:none;">Start</button>
+                        <button id="grammar-rule-btn" type="button" title="Mostrar regla gramatical (U)" aria-keyshortcuts="U" aria-label="Mostrar regla gramatical" style="display:none; width:48px; height:48px; border:none; border-radius:50%; background:#38bdf8; color:#08111f; font-weight:bold; cursor:pointer; box-shadow:0 2px 8px #0002; font-size:1.35em; line-height:1; padding:0;">⚙️</button>            <button id="start-btn" class="mobile-btn" title="Start" aria-label="Start" style="font-size:1.3em;padding:18px 40px;margin:0 auto;text-decoration:none;">Start</button>
         </div>
         <div id="ipa-word-container" style="margin-top:40px;"></div>
     </div>
@@ -1319,8 +1363,6 @@
             // Solo si los botones están visibles
             const leftBtn = document.getElementById('arrow-left');
             const rightBtn = document.getElementById('arrow-right');
-            const startBtn = document.getElementById('start-btn');
-            const stopBtn = document.getElementById('stop-btn');
             const replayBtn0 = document.getElementById('replay-word-btn');
             const grammarBtn0 = document.getElementById('grammar-rule-btn');
             if (e.key === 'j' || e.key === 'J') {
@@ -1336,24 +1378,6 @@
                 if (!e.repeat && replayBtn0 && replayBtn0.offsetParent !== null && !replayBtn0.disabled) replayBtn0.click();
             } else if (e.key === 'u' || e.key === 'U') {
                 if (!e.repeat && grammarBtn0 && grammarBtn0.offsetParent !== null && !grammarBtn0.disabled) grammarBtn0.click();
-            } else if (e.key === 'Enter') {
-                if (startBtn && startBtn.offsetParent !== null && !startBtn.disabled) {
-                    e.preventDefault();
-                    if (window.speechSynthesis) window.speechSynthesis.cancel();
-                    if (window._currentGoogleAudio && typeof window._currentGoogleAudio.pause === 'function') {
-                        window._currentGoogleAudio.pause();
-                        window._currentGoogleAudio.currentTime = 0;
-                    }
-                    startBtn.click();
-                } else if (stopBtn && stopBtn.offsetParent !== null && !stopBtn.disabled) {
-                    e.preventDefault();
-                    if (window.speechSynthesis) window.speechSynthesis.cancel();
-                    if (window._currentGoogleAudio && typeof window._currentGoogleAudio.pause === 'function') {
-                        window._currentGoogleAudio.pause();
-                        window._currentGoogleAudio.currentTime = 0;
-                    }
-                    stopBtn.click();
-                }
             }
         });
         var startBtn = document.getElementById('start-btn');
@@ -1423,7 +1447,7 @@
                                     </div>
                                 </div>
                                 <div style="margin-top:24px; display:flex; justify-content:center;">
-                                    <button id="stop-btn" type="button" class="arrow-btn"                                     title="Stop (Enter)" aria-label="Stop" aria-keyshortcuts="Enter" style="font-size:1.1em;padding:0.5em 2.5em;border-radius:12px;border:none;background:#fde047;color:#18181b;font-weight:bold;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">Stop</button>
+                                    <button id="stop-btn" type="button" class="arrow-btn" title="Pause (Esc)" aria-label="Pause" aria-keyshortcuts="Escape" style="font-size:1.1em;padding:0.5em 2.5em;border-radius:12px;border:none;background:#fde047;color:#18181b;font-weight:bold;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">Pause</button>
                                 </div>
                             `;
                             // Handler para mostrar la asociación (clic y tecla 'i')
@@ -1584,7 +1608,7 @@
                                                             </div>
                                                         </div>
                                                         <div style="margin-top:24px; display:flex; justify-content:center;">
-                                                            <button id="stop-btn" type="button" class="arrow-btn" title="Stop (Enter)" aria-label="Stop" aria-keyshortcuts="Enter" style="font-size:1.1em;padding:0.5em 2.5em;border-radius:12px;border:none;background:#fde047;color:#18181b;font-weight:bold;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">Stop</button>
+                                                            <button id="stop-btn" type="button" class="arrow-btn" title="Pause (Esc)" aria-label="Pause" aria-keyshortcuts="Escape" style="font-size:1.1em;padding:0.5em 2.5em;border-radius:12px;border:none;background:#fde047;color:#18181b;font-weight:bold;cursor:pointer;box-shadow:0 2px 8px #0002;transition:background 0.2s;">Pause</button>
                                                         </div>`;
                                                     // Handler para mostrar la asociación (clic y tecla 'i')
                                                     const showAssocBtn = document.getElementById('show-association-btn');
