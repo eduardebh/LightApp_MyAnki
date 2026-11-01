@@ -465,6 +465,24 @@ def get_pg_conn():
     return psycopg2.connect(db_url)
 
 
+def ensure_grammar_rule_column(cur):
+    """Keep the original mixed-case column compatible with the current schema."""
+    cur.execute('ALTER TABLE words ADD COLUMN IF NOT EXISTS grammar_rule TEXT')
+    cur.execute(
+        "SELECT EXISTS ("
+        "SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema = current_schema() "
+        "AND table_name = 'words' AND column_name = 'Grammar_rule'"
+        ")"
+    )
+    if cur.fetchone()[0]:
+        cur.execute(
+            'UPDATE words SET grammar_rule = "Grammar_rule" '
+            "WHERE COALESCE(BTRIM(grammar_rule), '') = '' "
+            "AND COALESCE(BTRIM(\"Grammar_rule\"), '') <> ''"
+        )
+
+
 @app.route('/api/db_health')
 def api_db_health():
     """Endpoint público (sin autenticación) para comprobar si la app puede conectar a la base de datos.
@@ -527,8 +545,7 @@ def api_add_word():
             cur.close(); conn.close()
             return jsonify({'success': False, 'error': 'No active list'}), 400
         active_list_id = row[0]
-        # Upgrade existing databases before writing the grammar rule field.
-        cur.execute('ALTER TABLE words ADD COLUMN IF NOT EXISTS grammar_rule TEXT')
+        ensure_grammar_rule_column(cur)
         # Si la palabra ya existe y no se envía un valor, se conserva el actual.
         cur.execute('''
             INSERT INTO words (word, association, "IPA_word", grammar_rule, list_id, added, counter_word)
@@ -601,14 +618,17 @@ def get_grammar_rule():
             cur.close(); conn.close()
             return {'error': 'No active list'}, 400
         active_list_id = row[0]
-        cur.execute('SELECT * FROM words WHERE word = %s AND list_id = %s', (word, active_list_id))
+        ensure_grammar_rule_column(cur)
+        conn.commit()
+        cur.execute(
+            'SELECT grammar_rule FROM words WHERE word = %s AND list_id = %s',
+            (word, active_list_id),
+        )
         row = cur.fetchone()
-        cols = [d[0].lower() for d in cur.description] if cur.description else []
         cur.close(); conn.close()
         if not row:
             return {'error': 'Word not found'}, 404
-        rule = row[cols.index('grammar_rule')] if 'grammar_rule' in cols else ''
-        return {'grammar_rule': rule or ''}
+        return {'grammar_rule': row[0] or ''}
     except Exception as e:
         print('[ERROR] get_grammar_rule:', e)
         return {'error': 'Internal error'}, 500
@@ -654,7 +674,7 @@ def api_all_words():
             cur.close(); conn.close()
             return jsonify([])
         active_list_id = row[0]
-        cur.execute('ALTER TABLE words ADD COLUMN IF NOT EXISTS grammar_rule TEXT')
+        ensure_grammar_rule_column(cur)
         conn.commit()
         cur.execute(
             'SELECT id, word, association, "IPA_word", grammar_rule, counter_word '
@@ -742,7 +762,7 @@ def api_update_words():
         if not row or not row[0]:
             return jsonify({'success': False, 'error': 'No active list'}), 400
         active_list_id = row[0]
-        cur.execute('ALTER TABLE words ADD COLUMN IF NOT EXISTS grammar_rule TEXT')
+        ensure_grammar_rule_column(cur)
 
         word_ids = [update['id'] for update in normalized_updates]
         cur.execute(
