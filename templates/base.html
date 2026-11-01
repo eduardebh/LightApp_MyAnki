@@ -696,7 +696,7 @@
                 </div>
         <div style="display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap; margin-top:16px;">
             <button id="replay-word-btn" type="button" title="Reproducir palabra (R)" aria-label="Reproducir palabra" aria-keyshortcuts="R" style="display:none; width:48px; height:48px; border:none; border-radius:50%; background:#38bdf8; color:#08111f; font-weight:bold; cursor:pointer; box-shadow:0 2px 8px #0002; font-size:1.35em; line-height:1; padding:0;">🔊</button>
-                        <button id="grammar-rule-btn" type="button" title="Mostrar regla gramatical (U)" aria-keyshortcuts="U" aria-label="Mostrar regla gramatical" style="display:none; width:48px; height:48px; border:none; border-radius:50%; background:#38bdf8; color:#08111f; font-weight:bold; cursor:pointer; box-shadow:0 2px 8px #0002; font-size:1.35em; line-height:1; padding:0;">⚙️</button>            <button id="start-btn" class="mobile-btn" title="Start" aria-label="Start" style="font-size:1.3em;padding:18px 40px;margin:0 auto;text-decoration:none;">Start</button>
+                        <button id="grammar-rule-btn" type="button" title="Mostrar regla gramatical (U)" aria-keyshortcuts="U" aria-label="Mostrar regla gramatical" style="display:none; width:48px; height:48px; border:none; border-radius:50%; background:#38bdf8; color:#08111f; font-weight:bold; cursor:pointer; box-shadow:0 2px 8px #0002; font-size:1.35em; line-height:1; padding:0;">⚙️</button>            <button id="start-btn" class="mobile-btn" title="Start (Espacio)" aria-label="Start" aria-keyshortcuts="Space" style="font-size:1.3em;padding:18px 40px;margin:0 auto;text-decoration:none;">Start</button>
         </div>
         <div id="ipa-word-container" style="margin-top:40px;"></div>
     </div>
@@ -1378,9 +1378,19 @@
             // Solo si los botones están visibles
             const leftBtn = document.getElementById('arrow-left');
             const rightBtn = document.getElementById('arrow-right');
+            const startBtn = document.getElementById('start-btn');
             const replayBtn0 = document.getElementById('replay-word-btn');
             const grammarBtn0 = document.getElementById('grammar-rule-btn');
-            if (e.key === 'j' || e.key === 'J') {
+            if (
+                (e.code === 'Space' || e.key === ' ') &&
+                !e.repeat &&
+                startBtn &&
+                startBtn.offsetParent !== null &&
+                !startBtn.disabled
+            ) {
+                e.preventDefault();
+                startBtn.click();
+            } else if (e.key === 'j' || e.key === 'J') {
                 if (rightBtn && !rightBtn.disabled) {
                     // Reproduce la palabra valorada antes de pasar a la siguiente
                     advanceWithDelay(rightBtn);
