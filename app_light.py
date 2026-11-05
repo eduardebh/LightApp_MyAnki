@@ -726,6 +726,9 @@ def api_update_words():
         association = update.get('association')
         ipa_word = update.get('IPA_word')
         grammar_rule = update.get('grammar_rule')
+        counter_word = update.get('counter_word')
+        if isinstance(counter_word, bool) or not isinstance(counter_word, int) or counter_word < 0:
+            return jsonify({'success': False, 'error': 'Counter must be a non-negative integer'}), 400
         if not all(isinstance(value, str) for value in (word, association, ipa_word, grammar_rule)):
             return jsonify({'success': False, 'error': 'Word values must be text'}), 400
 
@@ -745,6 +748,7 @@ def api_update_words():
             'association': association.strip(),
             'IPA_word': ipa_word.strip(),
             'grammar_rule': grammar_rule.strip(),
+            'counter_word': counter_word,
         })
 
     conn = None
@@ -788,13 +792,14 @@ def api_update_words():
 
         for update in normalized_updates:
             cur.execute(
-                'UPDATE words SET word = %s, association = %s, "IPA_word" = %s, grammar_rule = %s '
+                'UPDATE words SET word = %s, association = %s, "IPA_word" = %s, grammar_rule = %s, counter_word = %s '
                 'WHERE id = %s AND list_id = %s',
                 (
                     update['word'],
                     update['association'],
                     update['IPA_word'],
                     update['grammar_rule'],
+                    update['counter_word'],
                     update['id'],
                     active_list_id,
                 ),

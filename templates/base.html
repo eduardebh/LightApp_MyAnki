@@ -475,7 +475,7 @@
 
             const wordsTableModal = document.getElementById('words-table-modal');
             if (wordsTableModal && wordsTableModal.style.display === 'flex') {
-                if (_discardWordsTableChanges()) wordsTableModal.style.display = 'none';
+                _closeWordsTable();
                 event.preventDefault();
                 return;
             }
@@ -655,43 +655,45 @@
             <span style="display:block;width:18px;height:18px;border-radius:50%;background:#38bdf8;"></span>
         </button>
         <div id="words-table-modal" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#18181bcc;z-index:2000;align-items:center;justify-content:center;">
-                    <div style="background:#23272f;padding:32px 24px 24px 24px;border-radius:18px;max-width:95vw;max-height:80vh;overflow:auto;box-shadow:0 4px 32px #000a;">
+                    <div style="background:#23272f;padding:32px 24px 24px 24px;border-radius:18px;max-width:95vw;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 4px 32px #000a;">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
                             <span style="font-size:1.3em;color:#38bdf8;font-weight:bold;">Words in the active list</span>
                             <button id="close-table-btn" style="background:none;border:none;font-size:1.5em;color:#fde047;cursor:pointer;">&times;</button>
                         </div>
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
-                            <span id="words-table-feedback" role="status" style="color:#cbd5e1;font-size:0.9em;">Double-click Word, Association, IPA, or Grammar rule to edit.</span>
+                            <span id="words-table-feedback" role="status" style="color:#cbd5e1;font-size:0.9em;">Double-click Word, Association, IPA, Grammar rule, or Counter to edit.</span>
                             <div style="display:flex;gap:8px;">
                                 <button id="cancel-table-changes-btn" type="button" style="padding:8px 12px;border-radius:6px;border:1px solid #64748b;background:#23272f;color:#f3f4f6;cursor:pointer;">Cancel</button>
                                 <button id="save-table-changes-btn" type="button" disabled style="padding:8px 12px;border-radius:6px;border:none;background:#059669;color:#fff;cursor:pointer;opacity:0.5;">Save changes</button>
                             </div>
                         </div>
-                        <table id="words-table" style="width:100%;border-collapse:collapse;">
+                        <div style="overflow:auto;min-height:0;flex:1;">
+<table id="words-table" style="width:100%;border-collapse:collapse;">
                             <thead>
                                 <tr style="background:#18181b;color:#fde047;">
-                                    <th style="padding:8px 12px;">
+                                    <th style="padding:8px 12px;position:sticky;top:0;background:#18181b;z-index:1;">
                                         <button type="button" data-sort-key="id" style="background:none;border:none;color:inherit;font:inherit;font-weight:bold;cursor:pointer;padding:0;">ID</button>
                                     </th>
-                                    <th style="padding:8px 12px;">
+                                    <th style="padding:8px 12px;position:sticky;top:0;background:#18181b;z-index:1;">
                                         <button type="button" data-sort-key="word" style="background:none;border:none;color:inherit;font:inherit;font-weight:bold;cursor:pointer;padding:0;">Word</button>
                                     </th>
-                                    <th style="padding:8px 12px;">
+                                    <th style="padding:8px 12px;position:sticky;top:0;background:#18181b;z-index:1;">
                                         <button type="button" data-sort-key="association" style="background:none;border:none;color:inherit;font:inherit;font-weight:bold;cursor:pointer;padding:0;">Association</button>
                                     </th>
-                                    <th style="padding:8px 12px;">
+                                    <th style="padding:8px 12px;position:sticky;top:0;background:#18181b;z-index:1;">
                                         <button type="button" data-sort-key="grammar_rule" style="background:none;border:none;color:inherit;font:inherit;font-weight:bold;cursor:pointer;padding:0;">Grammar rule</button>
                                     </th>
-                                    <th style="padding:8px 12px;">
+                                    <th style="padding:8px 12px;position:sticky;top:0;background:#18181b;z-index:1;">
                                         <button type="button" data-sort-key="IPA_word" style="background:none;border:none;color:inherit;font:inherit;font-weight:bold;cursor:pointer;padding:0;">IPA</button>
                                     </th>
-                                    <th style="padding:8px 12px;">
+                                    <th style="padding:8px 12px;position:sticky;top:0;background:#18181b;z-index:1;">
                                         <button type="button" data-sort-key="counter_word" style="background:none;border:none;color:inherit;font:inherit;font-weight:bold;cursor:pointer;padding:0;">Counter</button>
                                     </th>
                                 </tr>
                             </thead>
                             <tbody></tbody>
                         </table>
+                        </div>
                     </div>
                 </div>
         <div style="display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap; margin-top:16px;">
@@ -788,7 +790,7 @@
                     _appendWordsTableCell(tr, obj.association || '', '#fde047', 'association');
                     _appendWordsTableCell(tr, obj.grammar_rule || '', '#c4b5fd', 'grammar_rule');
                     _appendWordsTableCell(tr, obj.IPA_word || '', '#38bdf8', 'IPA_word');
-                    _appendWordsTableCell(tr, obj.counter_word || 0, '#a3e635');
+                    _appendWordsTableCell(tr, obj.counter_word || 0, '#a3e635', 'counter_word');
                     tbody.appendChild(tr);
                 });
                 _updateWordsTableActions();
@@ -815,7 +817,8 @@
                         word.word !== original.word ||
                         (word.association || '') !== (original.association || '') ||
                         (word.grammar_rule || '') !== (original.grammar_rule || '') ||
-                        (word.IPA_word || '') !== (original.IPA_word || '')
+                        (word.IPA_word || '') !== (original.IPA_word || '') ||
+                        Number(word.counter_word || 0) !== Number(original.counter_word || 0)
                     );
                 });
             }
@@ -850,7 +853,7 @@
                 const input = document.createElement(
                     field === 'association' || field === 'grammar_rule' ? 'textarea' : 'input'
                 );
-                input.value = word[field] || '';
+                input.value = word[field] === null || word[field] === undefined ? '' : word[field];
                 input.style.cssText = 'box-sizing:border-box;width:100%;min-width:120px;padding:4px;border:1px solid #38bdf8;border-radius:4px;background:#18181b;color:#f3f4f6;font:inherit;';
                 if (input.tagName === 'TEXTAREA') input.rows = 2;
                 cell.textContent = '';
@@ -862,16 +865,22 @@
                 const finish = (save) => {
                     if (finished) return;
                     finished = true;
-                    const value = save ? input.value.trim() : word[field] || '';
+                    const value = save ? input.value.trim() : String(word[field] || '');
+                    if (save && field === 'counter_word' && !/^\d+$/.test(value)) {
+                        finished = false;
+                        _setWordsTableFeedback('Counter must be a non-negative integer.', '#f87171');
+                        input.focus();
+                        return;
+                    }
                     if (save && field === 'word' && !value) {
                         finished = false;
                         _setWordsTableFeedback('Word cannot be empty.', '#f87171');
                         input.focus();
                         return;
                     }
-                    if (save) word[field] = value;
+                    if (save) word[field] = field === 'counter_word' ? Number(value) : value;
                     cell.dataset.editing = 'false';
-                    cell.textContent = word[field] || '';
+                    cell.textContent = word[field] || (field === 'counter_word' ? 0 : '');
                     _updateWordsTableActions();
                 };
                 input.addEventListener('blur', () => finish(true));
@@ -889,7 +898,7 @@
             function _discardWordsTableChanges() {
                 if (_getWordsTablePendingChanges().length === 0 || window.confirm('Discard unsaved changes?')) {
                     renderWordsTable(window._wordsTableOriginal || []);
-                    _setWordsTableFeedback('Double-click Word, Association, IPA, or Grammar rule to edit.');
+                    _setWordsTableFeedback('Double-click Word, Association, IPA, Grammar rule, or Counter to edit.');
                     return true;
                 }
                 return false;
@@ -914,6 +923,7 @@
                                 association: word.association || '',
                                 IPA_word: word.IPA_word || '',
                                 grammar_rule: word.grammar_rule || '',
+                                counter_word: Number(word.counter_word || 0),
                             })),
                         }),
                     });
@@ -927,6 +937,17 @@
                     _setWordsTableFeedback(error.message || 'Unable to save changes.', '#f87171');
                     _updateWordsTableActions();
                 }
+            }
+
+            async function _closeWordsTable() {
+                const modal = document.getElementById('words-table-modal');
+                if (_getWordsTablePendingChanges().length > 0) {
+                    if (window.confirm('Save changes before closing?')) {
+                        await _saveWordsTableChanges();
+                        if (_getWordsTablePendingChanges().length > 0) return;
+                    }
+                }
+                modal.style.display = 'none';
             }
 
             document.addEventListener('DOMContentLoaded', function() {
@@ -962,11 +983,11 @@
                         renderWordsTable(words);
                     });
                     closeBtn.addEventListener('click', function() {
-                        if (_discardWordsTableChanges()) modal.style.display = 'none';
+                        _closeWordsTable();
                     });
                     // Cerrar modal al hacer click fuera del cuadro
                     modal.addEventListener('click', function(e) {
-                        if (e.target === modal && _discardWordsTableChanges()) modal.style.display = 'none';
+                        if (e.target === modal) _closeWordsTable();
                     });
                 }
             });
