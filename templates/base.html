@@ -1632,7 +1632,7 @@
                                         fetch('/api/update_counter', {
                                             method: 'POST',
                                             headers: {'Content-Type': 'application/json'},
-                                            body: JSON.stringify({word: currentWord, delta: -1})
+                                            body: JSON.stringify({word: currentWord, delta: -3})
                                         }).finally(() => {
                                             document.getElementById('ipa-word-container').innerHTML = '';
                                             fetch('/api/random_word', {
