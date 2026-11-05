@@ -242,6 +242,7 @@ def favicon():
 def api_tts():
     data = request.get_json()
     text = data.get('text', '').strip()
+    text = text.replace("'", "’").replace('ʼ', '’').replace('`', '’').replace('´', '’').replace('＇', '’')
     raw_language = data.get('language', 'en-US')
     # Normalize language codes so callers can send 'fr', 'fr-fr', 'fr_FR', etc.
     def _normalize_lang(lang: str) -> str:
@@ -278,7 +279,6 @@ def api_tts():
             return 'en-US'
 
     language = _normalize_lang(raw_language)
-    ipa = (data.get('ipa') or '').strip() if isinstance(data, dict) else ''
     if not text:
         return jsonify({'success': False, 'error': 'No text provided'}), 400
     # Browser synthesis remains the fallback when Cloud TTS is unavailable.
@@ -291,19 +291,7 @@ def api_tts():
     try:
         print(f'[TTS] Requesting Google Cloud TTS for "{text}" ({language})...')
         client = texttospeech.TextToSpeechClient()
-        # If IPA is provided, prefer SSML phoneme so the spoken audio can match liaison-aware IPA.
-        if ipa:
-            def _xml_escape(s: str) -> str:
-                return (s.replace('&', '&amp;')
-                         .replace('<', '&lt;')
-                         .replace('>', '&gt;')
-                         .replace('"', '&quot;')
-                         .replace("'", '&apos;'))
-
-            ssml = f'<speak><phoneme alphabet="ipa" ph="{_xml_escape(ipa)}">{_xml_escape(text)}</phoneme></speak>'
-            synthesis_input = texttospeech.SynthesisInput(ssml=ssml)
-        else:
-            synthesis_input = texttospeech.SynthesisInput(text=text)
+        synthesis_input = texttospeech.SynthesisInput(text=text)
 
         # Prefer an effects profile optimized for phone speakers when the request comes from a mobile browser.
         ua = (request.headers.get('User-Agent') or '')
@@ -372,8 +360,6 @@ def api_tts():
             # Query the voices enabled in this Google project. This is especially
             # important for French, whose available natural voices vary by project.
             natural = _get_available_natural_voices(client, lang_code)
-            if ipa:
-                natural = [voice_name for voice_name in natural if '-Chirp3-HD-' not in voice_name]
             if not natural:
                 natural = [v for v in voice_candidates if '-Standard-' not in v]
             standard = [v for v in voice_candidates if '-Standard-' in v]

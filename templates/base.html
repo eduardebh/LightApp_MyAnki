@@ -68,6 +68,7 @@
             // Ensure composed characters for diacritics when possible (e.g., e + ◌̀ -> è)
             // This helps some TTS engines pronounce accents correctly.
             try { t = t.normalize('NFC'); } catch (e) {}
+            t = t.replace(/['\u02BC`´＇]/g, '’');
 
             // If the text is just a single letter with diacritics, some voices will read the character name
             // (e.g., "a acute") instead of producing the vowel sound. In that case, speak the base letter.
@@ -91,12 +92,7 @@
                 }
             } catch (e) {}
 
-            // Some engines (or wrong locale selection) read ASCII apostrophe as punctuation (“apostrophe”).
-            // Using the typographic apostrophe often yields the intended French elision pronunciation.
             if (lang.startsWith('fr')) {
-                // Replace only when between letters (avoid changing quotes in other contexts).
-                t = t.replace(/([A-Za-zÀ-ÿ])'([A-Za-zÀ-ÿ])/g, '$1’$2');
-
                 // Handle literal dead-key artifacts some users might type:
                 // "e^" instead of "ê", "e`" instead of "è".
                 // Do this only when the symbol follows a vowel.
@@ -120,39 +116,14 @@
             // Extra cleaning for SpeechSynthesis: some local engines will literally say
             // punctuation names ("apostrophe", "point") instead of pronouncing naturally.
             let t = (text == null) ? '' : String(text);
-            const lang = (language || '').toString().toLowerCase();
             try { t = t.normalize('NFC'); } catch (e) {}
-
-            // French elisions: expand common clitics so the voice doesn't spell single letters.
-            // Example: "J'ai" -> "je ai" (local engines often misread "J" or apostrophes).
-            if (lang.startsWith('fr')) {
-                const lookahead = '(?=[A-Za-zÀ-ÖØ-öø-ÿ])';
-
-                const replWord = (match, g1, lowerWord, upperWord) => {
-                    const isUpper = (g1 && g1[0] === g1[0].toUpperCase());
-                    return (isUpper ? upperWord : lowerWord) + ' ';
-                };
-
-                // Order matters: handle "qu'" before "q'" etc.
-                t = t
-                    .replace(new RegExp('\\b(qu)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'que', 'Que'))
-                    .replace(new RegExp('\\b(j)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'je', 'Je'))
-                    .replace(new RegExp('\\b(d)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'de', 'De'))
-                    .replace(new RegExp('\\b(c)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'ce', 'Ce'))
-                    .replace(new RegExp('\\b(l)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'le', 'Le'))
-                    .replace(new RegExp('\\b(m)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'me', 'Me'))
-                    .replace(new RegExp('\\b(n)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'ne', 'Ne'))
-                    .replace(new RegExp('\\b(s)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'se', 'Se'))
-                    .replace(new RegExp('\\b(t)\\s*[\'’]\\s*' + lookahead, 'gi'), (m, g1) => replWord(m, g1, 'te', 'Te'));
-            }
+            t = t.replace(/['\u02BC`´＇]/g, '’');
 
             // Remove/neutralize remaining punctuation for local speech.
             // Local engines can vocalize punctuation names instead of treating them as pauses.
             t = t
                 // Periods and ellipses, including Unicode variants
                 .replace(/[.\u2024\u2026\uFE52\uFF0E]+/g, ' ')
-                // Apostrophes left, including keyboard and Unicode variants
-                .replace(/['’ʼ`´＇]/g, '')
                 // Common punctuation to spaces
                 .replace(/[\u00B7·,:;!?()\[\]{}"“”«»]/g, ' ')
                 // Hyphens/emdash to spaces
@@ -164,7 +135,7 @@
         }
 
         // --- Google Cloud TTS con fallback a SpeechSynthesis ---
-        async function playTTS(text, language, onEnd=null, options=null) {
+        async function playTTS(text, language, onEnd=null) {
                         _ttsDebug('[TTS] playTTS start', {text: (''+text).slice(0,120), language});
                         // Cancelar cualquier audio local pendiente antes de reproducir
                         if (window.speechSynthesis) window.speechSynthesis.cancel();
@@ -176,13 +147,6 @@
             const normalizedLanguage = _normalizeLocaleTag(language);
             const normalizedText = _normalizeTextForTTS(text, normalizedLanguage);
 
-            const ipa = options && options.ipa ? options.ipa : null;
-            const forceGoogleFirst = !!(options && options.forceGoogleFirst);
-            const forceGoogleForFrenchApostrophe = (
-                (normalizedLanguage || '').toString().toLowerCase().startsWith('fr') &&
-                /['’]/.test(normalizedText)
-            );
-
             // On many phones (esp. Android), German SpeechSynthesis voices can be extremely robotic
             // or only a single voice is available. In that case, prefer Google Cloud TTS.
             const isMobileDevice = (typeof navigator !== 'undefined') ? /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '') : false;
@@ -193,7 +157,7 @@
 
             async function _tryGoogleTTSOnce() {
                 try {
-                    const payload = ipa ? { text: normalizedText, language: normalizedLanguage, ipa } : { text: normalizedText, language: normalizedLanguage };
+                    const payload = { text: normalizedText, language: normalizedLanguage };
                     const resp = await fetch('/api/tts', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -233,8 +197,6 @@
                 return false;
             }
 
-            // If we have IPA (e.g., with liaison) and we're in French, prefer Google first to honor pronunciation.
-            // Also prefer Google first for French elisions with apostrophes (e.g., “j’ai”), which some local voices misread.
             // Google Cloud TTS siempre primero (voz Neural2 aleatoria en el servidor); voces locales solo como respaldo.
             if (true) {
                 const ok = await _tryGoogleTTSOnce();
@@ -380,25 +342,19 @@
             },
             // German examples (ö-umlaut)
             de: {
-                // Use a short German word so local SpeechSynthesis has a fighting chance,
-                // but still send the IPA phoneme to Google (SSML) for a pure vowel.
+                // Use a short German word so local SpeechSynthesis has a fighting chance.
                 'øː': 'schön',
                 'œ': 'Hölle'
             }
         };
         const exampleWord = (IPA_EXAMPLES[baseLang] && IPA_EXAMPLES[baseLang][symbol]) ? IPA_EXAMPLES[baseLang][symbol] : symbol;
 
-        const ipaPhoneme = (
-            (baseLang === 'de' && (symbol === 'øː' || symbol === 'œ')) ||
-            (baseLang === 'fr' && symbol === 'œ')
-        ) ? symbol : null;
-
-        async function tryGoogleFor(text, language, ipa=null) {
+        async function tryGoogleFor(text, language) {
             try {
                 const resp = await fetch('/api/tts', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(ipa ? { text, language, ipa } : { text, language })
+                    body: JSON.stringify({ text, language })
                 });
                 const data = await resp.json();
                 if (data && data.success && data.audioContent) {
@@ -429,11 +385,10 @@
         }
 
         // Mix: randomly use Google TTS; fallback to SpeechSynthesis.
-        // If we have an IPA phoneme (e.g., German ö short/long), force Google first so it can output the pure sound.
         const germanMobilePreferGoogle = (baseLang === 'de') && isMobileDevice;
-        const preferGoogle = ipaPhoneme ? true : (!hasLocalTTS ? true : (germanMobilePreferGoogle ? true : (Math.random() < 0.5)));
+        const preferGoogle = !hasLocalTTS || germanMobilePreferGoogle || Math.random() < 0.5;
         if (preferGoogle) {
-            const ok = await tryGoogleFor(exampleWord, preferredLang, ipaPhoneme);
+            const ok = await tryGoogleFor(exampleWord, preferredLang);
             if (!ok) speakLocal(exampleWord, preferredLang);
         } else {
             speakLocal(exampleWord, preferredLang);
@@ -1269,13 +1224,11 @@
         const state = window._currentWordSpeechState || {};
         const word = state.word;
         const lang = state.lang || 'de';
-        const ipa = state.ipa || null;
         if (!word) return;
         try {
             if (window.speechSynthesis) window.speechSynthesis.cancel();
             await ensureVoicesLoaded();
-            const forceGoogleFirst = !!(ipa && (lang || '').toString().toLowerCase().startsWith('fr'));
-            await playTTS(word, lang, null, { ipa, forceGoogleFirst });
+            await playTTS(word, lang);
         } catch (e) {
             console.error('replayCurrentWord error', e);
         }
@@ -1321,8 +1274,7 @@
         // Evitar que el loop de IPA reproduzca cuando el contador automático está gestionando repeticiones
         if (window._skipIpaRepeatDuringAutoAdvance) return;
         let cleanText = (wordText || '').replace(/[\\/]/g, '').replace(/\s+/g, ' ').trim();
-        const forceGoogleFirst = !!(ipaPhoneme && (lang || '').toString().toLowerCase().startsWith('fr'));
-        playTTS(cleanText, lang, onEnd, { ipa: ipaPhoneme, forceGoogleFirst });
+        playTTS(cleanText, lang, onEnd);
     }
 
     function startIPARepeat(wordText, ipaPhoneme, lang, firstDelay=0, onEnd=null) {
