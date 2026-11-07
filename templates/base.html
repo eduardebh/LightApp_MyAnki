@@ -168,7 +168,13 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
-                    const data = await resp.json();
+                    let data;
+                    try {
+                        data = await resp.json();
+                    } catch (e) {
+                        console.error('[TTS] Google Cloud TTS returned an invalid response:', e);
+                        return { played: false, fallbackAllowed: false };
+                    }
                     if (data.success && data.audioContent) {
                         const audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
                         if (window._currentGoogleAudio && typeof window._currentGoogleAudio.pause === 'function') {
@@ -179,15 +185,25 @@
                         audio.onplay = () => _ttsLog('[TTS] Audio Google Cloud TTS reproduciéndose');
                         audio.onerror = (e) => console.error('[TTS] Error al reproducir audio:', e);
                         audio.onended = () => { window._currentGoogleAudio = null; try { if (onEnd) onEnd(); } catch(e){console.error('onEnd callback error', e);} };
-                        audio.play();
+                        try {
+                            await audio.play();
+                        } catch (e) {
+                            console.error('[TTS] Google Cloud audio could not start:', e);
+                            return { played: false, fallbackAllowed: false };
+                        }
                         _ttsLog('[TTS] Usando Google Cloud TTS');
-                        return true;
+                        return { played: true, fallbackAllowed: false };
                     }
-                    _ttsWarn('[TTS] Google Cloud TTS fallback:', data && data.error);
+                    if (data && data.success === false && typeof data.error === 'string') {
+                        _ttsWarn('[TTS] Google Cloud TTS fallback:', data.error);
+                        return { played: false, fallbackAllowed: true };
+                    }
+                    console.error('[TTS] Google Cloud TTS returned an unexpected response:', data);
+                    return { played: false, fallbackAllowed: false };
                 } catch (e) {
                     _ttsWarn('[TTS] Google Cloud TTS error:', e);
+                    return { played: false, fallbackAllowed: true };
                 }
-                return false;
             }
 
             function _speakLocalOnce(voiceObjOrNull) {
@@ -204,8 +220,12 @@
 
             // Google Cloud TTS siempre primero (voz Neural2 aleatoria en el servidor); voces locales solo como respaldo.
             if (true) {
-                const ok = await _tryGoogleTTSOnce();
-                if (ok) return true;
+                const googleResult = await _tryGoogleTTSOnce();
+                if (googleResult.played) return true;
+                if (!googleResult.fallbackAllowed) {
+                    console.error('[TTS] Local fallback blocked because Google Cloud TTS did not report a clear failure.');
+                    return false;
+                }
                 const v = (localVoices && localVoices.length) ? localVoices[Math.floor(Math.random() * localVoices.length)] : null;
                 return _speakLocalOnce(v);
             }
