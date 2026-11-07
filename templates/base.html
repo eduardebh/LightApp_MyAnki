@@ -68,7 +68,7 @@
             // Ensure composed characters for diacritics when possible (e.g., e + ◌̀ -> è)
             // This helps some TTS engines pronounce accents correctly.
             try { t = t.normalize('NFC'); } catch (e) {}
-            t = t.replace(/['\u02BC`´＇]/g, '’');
+            t = t.replace(/['\u02BC’`´＇]/g, "'");
 
             // If the text is just a single letter with diacritics, some voices will read the character name
             // (e.g., "a acute") instead of producing the vowel sound. In that case, speak the base letter.
@@ -117,7 +117,12 @@
             // punctuation names ("apostrophe", "point") instead of pronouncing naturally.
             let t = (text == null) ? '' : String(text);
             try { t = t.normalize('NFC'); } catch (e) {}
-            t = t.replace(/['\u02BC`´＇]/g, '’');
+            t = t.replace(/['\u02BC’`´＇]/g, "'");
+
+            if ((language || '').toString().toLowerCase().replace('_', '-').startsWith('fr')) {
+                // French elisions are a single token, so remove only an invalid gap after one.
+                t = t.replace(/\b((?:[cdjlmnst]|qu|jusqu|lorsqu|puisqu|quelqu|presqu|entr))'\s+/gi, "$1'");
+            }
 
             // Remove/neutralize remaining punctuation for local speech.
             // Local engines can vocalize punctuation names instead of treating them as pauses.

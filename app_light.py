@@ -1,6 +1,7 @@
 
 
 import os
+import re
 # --- Soporte seguro para credenciales Google Cloud en Render ---
 if 'GOOGLE_APPLICATION_CREDENTIALS_JSON' in os.environ:
     creds_path = '/tmp/gcloud_creds.json'
@@ -196,6 +197,20 @@ def log_request_info():
 _LAST_TTS_VOICE = {}
 _NATURAL_TTS_VOICES = {}
 _NATURAL_TTS_VOICE_MARKERS = ('-Chirp3-HD-', '-Neural2-', '-Studio-', '-Wavenet-')
+_FRENCH_ELIDED_PREFIX = re.compile(
+    r"\b((?:[cdjlmnst]|qu|jusqu|lorsqu|puisqu|quelqu|presqu|entr))['\u02BC`´＇]\s+",
+    re.IGNORECASE,
+)
+
+
+def _normalize_tts_text(text, language):
+    """Canonicalize text tokens before passing them to a TTS engine."""
+    normalized_text = str(text or '').strip()
+    normalized_text = normalized_text.replace('ʼ', "'").replace('’', "'").replace('`', "'").replace('´', "'").replace('＇', "'")
+    if str(language or '').lower().replace('_', '-').startswith('fr'):
+        # An elision is one lexical token: "l' école" must be spoken as "l'école".
+        normalized_text = _FRENCH_ELIDED_PREFIX.sub(r"\1'", normalized_text)
+    return normalized_text
 
 
 def _get_available_natural_voices(client, language_code):
@@ -241,8 +256,6 @@ def favicon():
 @app.route('/api/tts', methods=['POST'])
 def api_tts():
     data = request.get_json()
-    text = data.get('text', '').strip()
-    text = text.replace("'", "’").replace('ʼ', '’').replace('`', '’').replace('´', '’').replace('＇', '’')
     raw_language = data.get('language', 'en-US')
     # Normalize language codes so callers can send 'fr', 'fr-fr', 'fr_FR', etc.
     def _normalize_lang(lang: str) -> str:
@@ -279,6 +292,7 @@ def api_tts():
             return 'en-US'
 
     language = _normalize_lang(raw_language)
+    text = _normalize_tts_text(data.get('text', ''), language)
     if not text:
         return jsonify({'success': False, 'error': 'No text provided'}), 400
     # Browser synthesis remains the fallback when Cloud TTS is unavailable.
