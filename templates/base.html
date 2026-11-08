@@ -194,7 +194,7 @@
                         _ttsLog('[TTS] Usando Google Cloud TTS');
                         return { played: true, fallbackAllowed: false };
                     }
-                    if (data && data.success === false && typeof data.error === 'string') {
+                    if (data && data.success === false && data.fallbackAllowed === true && typeof data.error === 'string') {
                         _ttsWarn('[TTS] Google Cloud TTS fallback:', data.error);
                         return { played: false, fallbackAllowed: true };
                     }

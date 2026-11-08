@@ -299,9 +299,17 @@ def api_tts():
     # Set DISABLE_GOOGLE_TTS=1 to explicitly disable Google Cloud TTS.
     disable_google_tts = os.environ.get('DISABLE_GOOGLE_TTS', '0').lower() in ('1', 'true', 'yes', 'on')
     if disable_google_tts:
-        return jsonify({'success': False, 'error': 'Google Cloud TTS disabled'}), 200
+        return jsonify({
+            'success': False,
+            'error': 'Google Cloud TTS disabled',
+            'fallbackAllowed': True,
+        }), 200
     if texttospeech is None:
-        return jsonify({'success': False, 'error': 'google-cloud-texttospeech not installed'}), 200
+        return jsonify({
+            'success': False,
+            'error': 'google-cloud-texttospeech not installed',
+            'fallbackAllowed': True,
+        }), 200
     try:
         print(f'[TTS] Requesting Google Cloud TTS for "{text}" ({language})...')
         client = texttospeech.TextToSpeechClient()
@@ -377,7 +385,11 @@ def api_tts():
             if not natural:
                 natural = [v for v in voice_candidates if '-Standard-' not in v]
             standard = [v for v in voice_candidates if '-Standard-' in v]
-            voice_candidates = _shuffle_voices_without_repeating_last(natural, lang_code) + standard
+            if lang_code == 'fr-FR' and 'fr-FR-Studio-A' in natural:
+                # Keep French elisions consistent instead of varying the voice per request.
+                voice_candidates = ['fr-FR-Studio-A'] + [v for v in natural if v != 'fr-FR-Studio-A'] + standard
+            else:
+                voice_candidates = _shuffle_voices_without_repeating_last(natural, lang_code) + standard
             last_voice_err: Exception | None = None
             response = None
             for voice_name in voice_candidates:
@@ -435,7 +447,11 @@ def api_tts():
         )
         if any(marker in msg_low for marker in fallback_markers):
             print('[TTS] Google Cloud unavailable; falling back to browser TTS')
-            return jsonify({'success': False, 'error': f'Google Cloud TTS unavailable: {msg}'}), 200
+            return jsonify({
+                'success': False,
+                'error': f'Google Cloud TTS unavailable: {msg}',
+                'fallbackAllowed': True,
+            }), 200
         import traceback
         print(f'[TTS] Exception: {e}')
         traceback.print_exc()
