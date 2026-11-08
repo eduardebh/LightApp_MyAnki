@@ -385,11 +385,7 @@ def api_tts():
             if not natural:
                 natural = [v for v in voice_candidates if '-Standard-' not in v]
             standard = [v for v in voice_candidates if '-Standard-' in v]
-            if lang_code == 'fr-FR' and 'fr-FR-Studio-A' in natural:
-                # Keep French elisions consistent instead of varying the voice per request.
-                voice_candidates = ['fr-FR-Studio-A'] + [v for v in natural if v != 'fr-FR-Studio-A'] + standard
-            else:
-                voice_candidates = _shuffle_voices_without_repeating_last(natural, lang_code) + standard
+            voice_candidates = _shuffle_voices_without_repeating_last(natural, lang_code) + standard
             last_voice_err: Exception | None = None
             response = None
             for voice_name in voice_candidates:
